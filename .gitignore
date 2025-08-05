@@ -1,0 +1,11 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/CmsApi.Auth/CopilotIndices/17.13.444.19527
+/.vs/CmsApi.Auth/v17
+/.vs/VSWorkspaceState.json
+/CmsApi.Auth/.vs/CmsApi.Auth
+/CmsApi.Auth/obj
+/CmsApi.Auth/Properties
+/CmsApi.Auth/bin/Debug/net9.0
