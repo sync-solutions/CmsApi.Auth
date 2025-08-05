@@ -1,5 +1,6 @@
 ﻿using CmsApi.Auth.Data;
 using CmsApi.Auth.DTOs;
+using CmsApi.Auth.Exceptions;
 using CmsApi.Auth.Helpers;
 using CmsApi.Auth.Models;
 using Microsoft.EntityFrameworkCore;
@@ -58,17 +59,23 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
         var existingUser = await dbContext.Users
-            .FirstOrDefaultAsync(u => u.Username == request.Username);
+        .FirstOrDefaultAsync(u => u.Email == request.Email || u.MobileNumber == request.MobileNumber);
 
         if (existingUser != null)
         {
+            var emailExists = existingUser.Email == request.Email;
+            var mobileExists = existingUser.MobileNumber == request.MobileNumber;
+
             return new AuthResponse
             {
                 Success = false,
-                Message = "Username already exists."
+                Message = emailExists && mobileExists
+                ? "Email and mobile number are already in use."
+                : emailExists
+                    ? "Email is already in use."
+                    : "Mobile number is already in use."
             };
         }
-
         // Hash authResponsesh the password
         var hashedPassword = PasswordHasher.HashPassword(request.Password);
 
@@ -203,7 +210,7 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
 
         var token = Guid.NewGuid().ToString();
         user.ResetToken = token;
-        user.ResetTokenExpiry = DateTime.UtcNow.AddHours(1);
+        user.ResetTokenExpiry = DateTime.Now.AddHours(1);
 
         await dbContext.SaveChangesAsync();
 
@@ -220,7 +227,8 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
 
         if (user == null) return false;
 
-        user.Password = PasswordHasher.HashPassword(request.NewPassword);
+        user.Password = request.NewPassword;
+        user.EncPassword = PasswordHasher.HashPassword(request.NewPassword);
         user.ResetToken = null;
         user.ResetTokenExpiry = null;
 
