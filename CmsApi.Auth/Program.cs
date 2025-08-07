@@ -1,4 +1,5 @@
 using CmsApi.Auth.Data;
+using CmsApi.Auth.Repositories;
 using CmsApi.Auth.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,9 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<UserRepository>();
+builder.Services.AddScoped<TokenRepository>();
+builder.Services.AddScoped<ApikeyRepository>();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<AuthDbContext>(options =>

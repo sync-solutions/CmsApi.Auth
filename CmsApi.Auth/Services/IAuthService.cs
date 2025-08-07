@@ -12,4 +12,6 @@ public interface IAuthService
     Task<AuthResponse> ValidateApiKeyAsync(string apiKey);
     Task<bool> ForgotPasswordAsync(ForgotPasswordRequest request);
     Task<bool> ResetPasswordAsync(ResetPasswordRequest request);
+    Task<AuthResponse> RefreshTokenAsync(string refreshToken);
+
 }

@@ -2,6 +2,7 @@
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace CmsApi.Auth.Services;
@@ -11,7 +12,6 @@ public class JwtService : IJwtService
     private readonly string _secretKey = "iOiJIUzI1NiIsInR5cCI6IkpXVCJ9eyJpc3MiOiJPbmxpbmUgV0lUIEJ1aWxkZXIiLCJpYXQ";
     private readonly string _issuer = "CmsAuth";
     private readonly string _audience = "CmsApiClients";
-
     public string GenerateToken(User user)
     {
         var claims = new[]
@@ -31,6 +31,14 @@ public class JwtService : IJwtService
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public string GenerateRefreshToken()
+    {
+        var randomBytes = new byte[64];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(randomBytes);
+        return Convert.ToBase64String(randomBytes);
     }
 
     public ClaimsPrincipal? ValidateToken(string token)

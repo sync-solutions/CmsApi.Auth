@@ -1,32 +1,31 @@
-﻿using CmsApi.Auth.Data;
+﻿using Azure.Core;
+using CmsApi.Auth.Data;
 using CmsApi.Auth.DTOs;
 using CmsApi.Auth.Exceptions;
 using CmsApi.Auth.Helpers;
 using CmsApi.Auth.Models;
+using CmsApi.Auth.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace CmsApi.Auth.Services;
 
-public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmailService emailService) : IAuthService
+public class AuthService(TokenRepository tokenRepository, UserRepository userRepository,
+     ApikeyRepository apikeyRepository, IJwtService jwtService, IEmailService emailService) : IAuthService
 {
 
     public async Task<bool> LogoutAsync(string token)
     {
-        var jwtRecord = await dbContext.Jwts
-            .FirstOrDefaultAsync(t => t.Token == token && !t.IsRevoked);
+        Jwt jwtRecord = await tokenRepository.Get(token);
 
         if (jwtRecord == null)
             return false;
 
-        jwtRecord.IsRevoked = true;
-        await dbContext.SaveChangesAsync();
+        jwtRecord = await tokenRepository.RevokeToken(jwtRecord);
         return true;
     }
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
-        var user = await dbContext.Users
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Username == request.Username);
+        var user = await userRepository.GetByUserName(request.Username);
 
         if (user == null || !user.IsActive)
             return new AuthResponse { Success = false, Message = "Invalid credentials or user inactive." };
@@ -35,14 +34,18 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
         if (!PasswordHasher.VerifyPassword(request.Password, user.EncPassword))
             return new AuthResponse { Success = false, Message = "Invalid credentials." };
 
-        var token = jwtService.GenerateToken(user);
+
+        var newJwt = await tokenRepository.Add(jwtService.GenerateRefreshToken(), user,
+                                             jwtService.GenerateToken(user));
 
         // Send login notification email
         var htmlBody = $@"
         <h3>Hello {user.Name},</h3>
         <p>You have just logged in to your account.</p>
         <p>Here is your JWT token:</p>
-        <p><code>{token}</code></p>
+        <p><code>{newJwt.AccessToken}</code></p>
+        <p>And your Refresh token:</p>
+        <p><code>{newJwt.RefreshToken}</code></p>
         <p>If this wasn't you, please reset your password immediately.</p>
     ";
 
@@ -51,15 +54,17 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
         return new AuthResponse
         {
             Success = true,
-            Token = token,
+            AccessToken = newJwt.AccessToken,
+            AccessTokenExpiration = newJwt.AccessTokenExpiration,
+            RefreshToken = newJwt.RefreshToken,
+            RefreshTokenExpiration = newJwt.RefreshTokenExpiration,
             UserId = user.Id,
             Username = user.Username
         };
     }
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
-        var existingUser = await dbContext.Users
-        .FirstOrDefaultAsync(u => u.Email == request.Email || u.MobileNumber == request.MobileNumber);
+        User existingUser = await userRepository.GetByEmailorMob(request);
 
         if (existingUser != null)
         {
@@ -79,39 +84,40 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
         // Hash authResponsesh the password
         var hashedPassword = PasswordHasher.HashPassword(request.Password);
 
-        var newUser = new User
+        var refreshToken = jwtService.GenerateRefreshToken();
+        User newUser = await userRepository.Add(request, hashedPassword, refreshToken);
+        Jwt newJwt = await tokenRepository.Add(refreshToken, newUser, jwtService.GenerateToken(newUser));
+
+        if (newUser == null || newJwt == null)
         {
-            Username = request.Username,
-            Password = request.Password,
-            EncPassword = hashedPassword,
-            Email = request.Email,
-            Name = request.Name,
-            MobileNumber = request.MobileNumber,
-            IsActive = true,
-            CreationDate = DateTime.UtcNow,
-            RoleId = request.RoleId
-        };
-
-        dbContext.Users.Add(newUser);
-        await dbContext.SaveChangesAsync();
-
-        var token = jwtService.GenerateToken(newUser);
+            return new AuthResponse
+            {
+                Success = false,
+                Message = "Failed to create user. Please try again later."
+            };
+        }
 
         //Send welcome email with token
         var htmlBody = $@"
         <h3>Welcome {newUser.Name}!</h3>
         <p>Thank you for registering. Here's your login token:</p>
-        <p><code>{token}</code></p>
-        <p>Use this token to access your account. Keep it secure.</p>
+        <p><code>{newJwt.AccessToken}</code></p>
+        <p>And your Refresh token:</p>
+        <p><code>{newJwt.RefreshToken}</code></p>
+        <p>Use those tokens to access your account. Keep it secure.</p>
     ";
 
         await emailService.SendAsync(newUser.Email, "Welcome to Our System 🎉", htmlBody);
 
         return new AuthResponse
         {
+            UserId = newUser.Id,
             Success = true,
             Message = "User registered successfully.",
-            Token = token
+            AccessToken = newJwt.AccessToken,
+            AccessTokenExpiration = newJwt.AccessTokenExpiration,
+            RefreshToken = newJwt.RefreshToken,
+            RefreshTokenExpiration = newJwt.RefreshTokenExpiration
         };
     }
     public async Task<AuthResponse> ValidateTokenAsync(string token)
@@ -146,8 +152,7 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
             };
         }
 
-        var user = await dbContext.Users
-            .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
+        var user = await userRepository.GetByUserName(username);
 
         if (user == null)
         {
@@ -162,7 +167,7 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
         {
             Success = true,
             Message = "Token is valid.",
-            Token = token,
+            AccessToken = token,
             UserId = user.Id,
             Username = user.Username
         };
@@ -178,11 +183,7 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
             };
         }
 
-        var apiKeyEntity = await dbContext.ApiKeys
-            .FirstOrDefaultAsync(k =>
-                k.Key == apiKey &&
-                k.IsActive &&
-                (k.ExpiresAt == null || k.ExpiresAt > DateTime.UtcNow));
+        ApiKey apiKeyEntity = await apikeyRepository.GetValid(apiKey);
 
         if (apiKeyEntity == null)
         {
@@ -203,16 +204,11 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
     }
     public async Task<bool> ForgotPasswordAsync(ForgotPasswordRequest request)
     {
-        var user = await dbContext.Users
-            .FirstOrDefaultAsync(u => u.Email == request.EmailOrUsername || u.Username == request.EmailOrUsername);
+        var user = await userRepository.GetByEmailorUserName(request.EmailOrUsername);
 
         if (user == null) return false;
 
-        var token = Guid.NewGuid().ToString();
-        user.ResetToken = token;
-        user.ResetTokenExpiry = DateTime.Now.AddHours(1);
-
-        await dbContext.SaveChangesAsync();
+        string token = await userRepository.GenerateResetPassToken(user);
 
         var resetLink = $"https://localhost:44306/reset-password?token={token}";
 
@@ -222,19 +218,51 @@ public class AuthService(AuthDbContext dbContext, IJwtService jwtService, IEmail
     }
     public async Task<bool> ResetPasswordAsync(ResetPasswordRequest request)
     {
-        var user = await dbContext.Users
-            .FirstOrDefaultAsync(u => u.ResetToken == request.Token && u.ResetTokenExpiry > DateTime.UtcNow);
+        User user = await userRepository.GetByValidResetToken(request);
 
         if (user == null) return false;
 
         user.Password = request.NewPassword;
         user.EncPassword = PasswordHasher.HashPassword(request.NewPassword);
-        user.ResetToken = null;
-        user.ResetTokenExpiry = null;
-
-        await dbContext.SaveChangesAsync();
+        user.ResetPassToken = null;
+        user.ResetPassTokenExpiry = null;
+        await userRepository.Update(user);
         return true;
     }
+    public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
+    {
+        var jwt = await tokenRepository.GetByRefreshToken(refreshToken);
 
+        if (jwt == null || jwt.RefreshTokenExpiration < DateTime.UtcNow)
+            return new AuthResponse { Success = false, Message = "Invalid or expired refresh token." };
 
+        // Manually load the user
+        var user = await userRepository.GetById(jwt.UserId);
+        if (user == null)
+            return new AuthResponse { Success = false, Message = "User not found." };
+
+        // Generate new tokens
+        var newAccessToken = jwtService.GenerateToken(user);
+        var newRefreshToken = jwtService.GenerateRefreshToken();
+
+        jwt.AccessToken = newAccessToken;
+        jwt.RefreshToken = newRefreshToken;
+        jwt.AccessTokenExpiration = DateTime.Now.AddMinutes(15);
+        jwt.RefreshTokenExpiration = DateTime.Now.AddDays(7);
+
+        await tokenRepository.Update(jwt);
+
+        return new AuthResponse
+        {
+            Success = true,
+            Email = user.Email,
+            AccessToken = newAccessToken,
+            AccessTokenExpiration = jwt.AccessTokenExpiration,
+            RefreshToken = newRefreshToken,
+            RefreshTokenExpiration = jwt.RefreshTokenExpiration,
+            UserId = user.Id,
+            Username = user.Username,
+            Message = "Access Token Refreshed Successfully"
+        };
+    }
 }

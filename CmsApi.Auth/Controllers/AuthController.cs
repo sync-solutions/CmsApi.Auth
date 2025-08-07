@@ -19,7 +19,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
         if (authResponse == null || authResponse.Success == false)
             return Unauthorized("Invalid credentials");
 
-        return Ok(new AuthResponse { Token = authResponse.Token });
+        return Ok(authResponse);
     }
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
@@ -55,6 +55,19 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
         return result.Success ? Ok(result) : Unauthorized(result);
     }
 
+    [HttpPost("refresh-token")]
+    public async Task<IActionResult> RefreshToken([FromBody] string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return BadRequest("Refresh token is required.");
+
+        var result = await authService.RefreshTokenAsync(token);
+
+        if (!result.Success)
+            return Unauthorized(result.Message);
+
+        return Ok(result);
+    }
 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)

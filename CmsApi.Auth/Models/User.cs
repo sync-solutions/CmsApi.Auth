@@ -10,6 +10,6 @@ public class User : BaseEntity
     public string MobileNumber { get; set; }
     public int RoleId { get; set; }
     public bool IsActive { get; set; }
-    public string? ResetToken { get; set; }
-    public DateTime? ResetTokenExpiry { get; set; }
+    public string? ResetPassToken { get; set; }
+    public DateTime? ResetPassTokenExpiry { get; set; }
 }
