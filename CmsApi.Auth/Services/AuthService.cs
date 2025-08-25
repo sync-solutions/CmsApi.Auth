@@ -1,18 +1,21 @@
-﻿using Azure.Core;
-using CmsApi.Auth.Data;
-using CmsApi.Auth.DTOs;
-using CmsApi.Auth.Exceptions;
+﻿using CmsApi.Auth.DTOs;
 using CmsApi.Auth.Helpers;
 using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
-using Microsoft.EntityFrameworkCore;
 
 namespace CmsApi.Auth.Services;
 
-public class AuthService(TokenRepository tokenRepository, UserRepository userRepository,
-     ApikeyRepository apikeyRepository, IJwtService jwtService, IEmailService emailService) : IAuthService
+public class AuthService(
+    TokenRepository tokenRepository,
+    UserRepository userRepository,
+    ApikeyRepository apikeyRepository,
+    IJwtService jwtService,
+    IEmailService emailService,
+    SessionService sessionService,
+    SessionHelper sessionHelper,
+    IHttpContextAccessor httpContextAccessor
+) : IAuthService
 {
-
     public async Task<bool> LogoutAsync(string token)
     {
         Jwt jwtRecord = await tokenRepository.Get(token);
@@ -21,8 +24,12 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             return false;
 
         jwtRecord = await tokenRepository.RevokeToken(jwtRecord);
+
+        await sessionService.EndSessionAsync(jwtRecord.UserId);
+
         return true;
     }
+
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
         var user = await userRepository.GetByUserName(request.Username);
@@ -30,15 +37,18 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
         if (user == null || !user.IsActive)
             return new AuthResponse { Success = false, Message = "Invalid credentials or user inactive." };
 
-        // Verify password
         if (!PasswordHasher.VerifyPassword(request.Password, user.EncPassword))
             return new AuthResponse { Success = false, Message = "Invalid credentials." };
 
+        var newJwt = await tokenRepository.Add(
+        jwtService.GenerateRefreshToken(),
+        user,
+        jwtService.GenerateToken(user)
+    );
+        Session session = sessionHelper.CreateNew(user, newJwt);
 
-        var newJwt = await tokenRepository.Add(jwtService.GenerateRefreshToken(), user,
-                                             jwtService.GenerateToken(user));
+        await sessionService.CreateSessionAsync(session);
 
-        // Send login notification email
         var htmlBody = $@"
         <h3>Hello {user.Name},</h3>
         <p>You have just logged in to your account.</p>
@@ -62,6 +72,7 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             Username = user.Username
         };
     }
+
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
         User existingUser = await userRepository.GetByEmailorMob(request);
@@ -75,13 +86,11 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             {
                 Success = false,
                 Message = emailExists && mobileExists
-                ? "Email and mobile number are already in use."
-                : emailExists
-                    ? "Email is already in use."
-                    : "Mobile number is already in use."
+                    ? "Email and mobile number are already in use."
+                    : emailExists ? "Email is already in use." : "Mobile number is already in use."
             };
         }
-        // Hash authResponsesh the password
+
         var hashedPassword = PasswordHasher.HashPassword(request.Password);
 
         var refreshToken = jwtService.GenerateRefreshToken();
@@ -90,14 +99,13 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
 
         if (newUser == null || newJwt == null)
         {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "Failed to create user. Please try again later."
-            };
+            return new AuthResponse { Success = false, Message = "Failed to create user. Please try again later." };
         }
 
-        //Send welcome email with token
+        Session session = sessionHelper.CreateNew(newUser, newJwt);
+
+        await sessionService.CreateSessionAsync(session);
+
         var htmlBody = $@"
         <h3>Welcome {newUser.Name}!</h3>
         <p>Thank you for registering. Here's your login token:</p>
@@ -120,48 +128,29 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             RefreshTokenExpiration = newJwt.RefreshTokenExpiration
         };
     }
+
     public async Task<AuthResponse> ValidateTokenAsync(string token)
     {
         if (string.IsNullOrWhiteSpace(token))
-        {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "Token is missing."
-            };
-        }
+            return new AuthResponse { Success = false, Message = "Token is missing." };
+
+        var jwt = await tokenRepository.Get(token);
+        if (jwt == null || jwt.RefreshTokenExpiration < DateTime.UtcNow)
+            return new AuthResponse { Success = false, Message = "Invalid or expired token." };
 
         var principal = jwtService.ValidateToken(token);
         if (principal == null)
-        {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "Invalid or expired token."
-            };
-        }
+            return new AuthResponse { Success = false, Message = "Invalid or expired token." };
 
         var username = principal.Identity?.Name;
-
         if (string.IsNullOrEmpty(username))
-        {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "Invalid token payload."
-            };
-        }
+            return new AuthResponse { Success = false, Message = "Invalid token payload." };
 
         var user = await userRepository.GetByUserName(username);
-
         if (user == null)
-        {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "User not found or inactive."
-            };
-        }
+            return new AuthResponse { Success = false, Message = "User not found or inactive." };
+
+        await sessionService.RefreshSessionAsync(jwt.SessionId.Value);
 
         return new AuthResponse
         {
@@ -172,27 +161,16 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             Username = user.Username
         };
     }
+
     public async Task<AuthResponse> ValidateApiKeyAsync(string apiKey)
     {
         if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "API key is required."
-            };
-        }
+            return new AuthResponse { Success = false, Message = "API key is required." };
 
         ApiKey apiKeyEntity = await apikeyRepository.GetValid(apiKey);
 
         if (apiKeyEntity == null)
-        {
-            return new AuthResponse
-            {
-                Success = false,
-                Message = "Invalid or expired API key."
-            };
-        }
+            return new AuthResponse { Success = false, Message = "Invalid or expired API key." };
 
         return new AuthResponse
         {
@@ -202,53 +180,58 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             Username = apiKeyEntity.UserName
         };
     }
+
     public async Task<bool> ForgotPasswordAsync(ForgotPasswordRequest request)
     {
         var user = await userRepository.GetByEmailorUserName(request.EmailOrUsername);
-
         if (user == null) return false;
 
         string token = await userRepository.GenerateResetPassToken(user);
 
         var resetLink = $"https://localhost:44306/reset-password?token={token}";
-
         await emailService.SendAsync(user.Email, "Password Reset", $"Use this link to reset your password: {resetLink}");
 
         return true;
     }
+
     public async Task<bool> ResetPasswordAsync(ResetPasswordRequest request)
     {
         User user = await userRepository.GetByValidResetToken(request);
-
         if (user == null) return false;
 
         user.Password = request.NewPassword;
         user.EncPassword = PasswordHasher.HashPassword(request.NewPassword);
         user.ResetPassToken = null;
         user.ResetPassTokenExpiry = null;
+
         await userRepository.Update(user);
+
+        await sessionService.EndSessionAsync(user.Id);
+
         return true;
     }
+
     public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
     {
         var jwt = await tokenRepository.GetByRefreshToken(refreshToken);
-
         if (jwt == null || jwt.RefreshTokenExpiration < DateTime.UtcNow)
             return new AuthResponse { Success = false, Message = "Invalid or expired refresh token." };
 
-        // Manually load the user
         var user = await userRepository.GetById(jwt.UserId);
         if (user == null)
             return new AuthResponse { Success = false, Message = "User not found." };
 
-        // Generate new tokens
+        // Refresh the same session if present
+        if (jwt.SessionId.HasValue)
+            await sessionService.RefreshSessionAsync(jwt.SessionId.Value);
+
         var newAccessToken = jwtService.GenerateToken(user);
         var newRefreshToken = jwtService.GenerateRefreshToken();
 
         jwt.AccessToken = newAccessToken;
         jwt.RefreshToken = newRefreshToken;
-        jwt.AccessTokenExpiration = DateTime.Now.AddMinutes(15);
-        jwt.RefreshTokenExpiration = DateTime.Now.AddDays(7);
+        jwt.AccessTokenExpiration = DateTime.UtcNow.AddMinutes(15);
+        jwt.RefreshTokenExpiration = DateTime.UtcNow.AddDays(7);
 
         await tokenRepository.Update(jwt);
 
@@ -262,7 +245,9 @@ public class AuthService(TokenRepository tokenRepository, UserRepository userRep
             RefreshTokenExpiration = jwt.RefreshTokenExpiration,
             UserId = user.Id,
             Username = user.Username,
-            Message = "Access Token Refreshed Successfully"
+            SessionId = jwt.SessionId,
+            Message = "Access token refreshed."
         };
     }
+
 }

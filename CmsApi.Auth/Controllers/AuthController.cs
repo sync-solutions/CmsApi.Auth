@@ -84,4 +84,17 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
         var success = await authService.ResetPasswordAsync(request);
         return success ? Ok("Password reset successful") : BadRequest("Invalid or expired token");
     }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout([FromBody] string token)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var authResponse = await authService.LogoutAsync(token);
+        if (authResponse == false)
+            return Unauthorized("Can't logout");
+
+        return Ok(authResponse);
+    }
 }
