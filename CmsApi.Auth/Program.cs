@@ -25,11 +25,11 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddSwaggerGen();
 
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
     app.UseSwagger();
 }
 
@@ -38,9 +38,14 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
-app.UseSwaggerUI(c =>
+
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
-    c.RoutePrefix = "";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Auth API V1");
+        c.RoutePrefix = ""; // swagger UI at root (https://localhost:44323)
+    });
+}
 app.Run();
