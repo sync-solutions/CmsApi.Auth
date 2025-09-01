@@ -17,7 +17,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
 
         var authResponse = await authService.LoginAsync(request);
         if (authResponse == null || authResponse.Success == false)
-            return Unauthorized("Invalid credentials");
+            return Unauthorized(authResponse);
 
         return Ok(authResponse);
     }
@@ -33,7 +33,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
                     kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
                 );
 
-            return BadRequest(new { Message = "Validation failed", Errors = errors });
+            return BadRequest(new AuthResponse { Message = "Validation failed", Errors = errors });
         }
 
         var result = await authService.RegisterAsync(request);

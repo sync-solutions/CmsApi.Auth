@@ -9,6 +9,7 @@ public class AuthService(
     TokenRepository tokenRepository,
     UserRepository userRepository,
     ApikeyRepository apikeyRepository,
+    SessionRepository sessionRepository,
     IJwtService jwtService,
     IEmailService emailService,
     SessionService sessionService,
@@ -150,7 +151,10 @@ public class AuthService(
         if (user == null)
             return new AuthResponse { Success = false, Message = "User not found or inactive." };
 
-        await sessionService.RefreshSessionAsync(jwt.SessionId.Value);
+        var sessionId = sessionRepository.GetByJwtIdAsync(jwt.Id).Result?.Id;
+
+        if (sessionId.HasValue)
+            await sessionService.RefreshSessionAsync(sessionId.Value);
 
         return new AuthResponse
         {
@@ -221,9 +225,11 @@ public class AuthService(
         if (user == null)
             return new AuthResponse { Success = false, Message = "User not found." };
 
+        var sessionId = sessionRepository.GetByJwtIdAsync(jwt.Id).Result?.Id;
+
         // Refresh the same session if present
-        if (jwt.SessionId.HasValue)
-            await sessionService.RefreshSessionAsync(jwt.SessionId.Value);
+        if (sessionId.HasValue)
+            await sessionService.RefreshSessionAsync(sessionId.Value);
 
         var newAccessToken = jwtService.GenerateToken(user);
         var newRefreshToken = jwtService.GenerateRefreshToken();
@@ -245,7 +251,7 @@ public class AuthService(
             RefreshTokenExpiration = jwt.RefreshTokenExpiration,
             UserId = user.Id,
             Username = user.Username,
-            SessionId = jwt.SessionId,
+            SessionId = sessionId,
             Message = "Access token refreshed."
         };
     }

@@ -15,6 +15,10 @@ public class SessionRepository(AuthDbContext dbContext)
     {
         return await dbContext.Sessions.FirstOrDefaultAsync(s => s.UserId == userId);
     }
+    public async Task<Session?> GetByJwtIdAsync(int id)
+    {
+        return await dbContext.Sessions.FirstOrDefaultAsync(s => s.JwtId == id);
+    }
 
     public async Task AddAsync(Session session)
     {

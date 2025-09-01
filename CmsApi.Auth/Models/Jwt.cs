@@ -8,6 +8,5 @@ public class Jwt : BaseEntity
     public DateTime RefreshTokenExpiration { get; set; }
     public bool IsAccessTokenRevoked { get; set; }
     public int UserId { get; set; }
-    public int? SessionId { get; set; }
 }
 

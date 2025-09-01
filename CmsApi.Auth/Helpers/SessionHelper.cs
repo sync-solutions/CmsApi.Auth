@@ -14,14 +14,12 @@ public class SessionHelper(IHttpContextAccessor httpContextAccessor)
         var session = new Session
         {
             UserId = user.Id,
-            Token = newJwt.AccessToken,
-            RefreshToken = newJwt.RefreshToken,
-            RefreshTokenExpiry = DateTime.Now.AddDays(7),
             IpAddress = ipAddress,
             UserAgent = userAgent,
             DeviceInfo = deviceInfo,
             LastActivity = DateTime.Now,
             IsActive = true,
+            JwtId = newJwt.Id,
             ExpirationDate = DateTime.Now.AddHours(1)
         };
         return session;
