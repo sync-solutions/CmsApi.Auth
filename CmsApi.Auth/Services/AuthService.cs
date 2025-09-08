@@ -2,6 +2,7 @@
 using CmsApi.Auth.Helpers;
 using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace CmsApi.Auth.Services;
 
@@ -41,15 +42,50 @@ public class AuthService(
         if (!PasswordHasher.VerifyPassword(request.Password, user.EncPassword))
             return new AuthResponse { Success = false, Message = "Invalid credentials." };
 
-        var newJwt = await tokenRepository.Add(
-        jwtService.GenerateRefreshToken(),
-        user,
-        jwtService.GenerateToken(user)
-    );
-        Session session = sessionHelper.CreateNew(user, newJwt);
+        Session? existingSession = await FindSession(user);
 
-        await sessionService.CreateSessionAsync(session);
+        if (existingSession != null)
+        {
+            await sessionService.RefreshSessionAsync(existingSession.Id);
 
+            return new AuthResponse
+            {
+                Success = true,
+                Message = "Session reused.",
+                AccessToken = existingSession.Jwt.AccessToken,
+                AccessTokenExpiration = existingSession.Jwt.AccessTokenExpiration,
+                RefreshToken = existingSession.Jwt.RefreshToken,
+                RefreshTokenExpiration = existingSession.Jwt.RefreshTokenExpiration,
+                UserId = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                SessionId = existingSession.Id
+            };
+        }
+
+        var newJwt = await tokenRepository.Add(jwtService.GenerateRefreshToken(), user, jwtService.GenerateToken(user));
+
+        var newSession = await sessionService.CreateSessionAsync(sessionHelper.CreateNew(user, newJwt));
+
+        await SendLoginEmail(user, newJwt);
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = "Login successful.",
+            AccessToken = newJwt.AccessToken,
+            AccessTokenExpiration = newJwt.AccessTokenExpiration,
+            RefreshToken = newJwt.RefreshToken,
+            RefreshTokenExpiration = newJwt.RefreshTokenExpiration,
+            UserId = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            SessionId = newSession.Id
+        };
+    }
+
+    private async Task SendLoginEmail(User user, Jwt newJwt)
+    {
         var htmlBody = $@"
         <h3>Hello {user.Name},</h3>
         <p>You have just logged in to your account.</p>
@@ -59,19 +95,19 @@ public class AuthService(
         <p><code>{newJwt.RefreshToken}</code></p>
         <p>If this wasn't you, please reset your password immediately.</p>
     ";
-
         await emailService.SendAsync(user.Email, "Login Notification", htmlBody);
+    }
 
-        return new AuthResponse
-        {
-            Success = true,
-            AccessToken = newJwt.AccessToken,
-            AccessTokenExpiration = newJwt.AccessTokenExpiration,
-            RefreshToken = newJwt.RefreshToken,
-            RefreshTokenExpiration = newJwt.RefreshTokenExpiration,
-            UserId = user.Id,
-            Username = user.Username
-        };
+    private async Task<Session?> FindSession(User user)
+    {
+        var httpContext = httpContextAccessor.HttpContext;
+        var userAgent = httpContext?.Request.Headers["User-Agent"].ToString()?.Trim() ?? string.Empty;
+        var os = UserAgentHelper.GetOSFromUserAgent(userAgent);
+        var browser = UserAgentHelper.GetBrowserFromUserAgent(userAgent);
+        var deviceInfo = $"{os}, {browser}".Trim().ToLowerInvariant();
+        var ipAddress = httpContext?.Connection?.RemoteIpAddress?.ToString()?.Trim() ?? string.Empty;
+
+        return await sessionService.FindActiveSessionAsync(user.Id, deviceInfo, ipAddress);
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)

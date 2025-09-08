@@ -10,5 +10,7 @@ public class Session : BaseEntity
     public DateTime LastActivity { get; set; }
     public bool IsActive { get; set; }
     public int UserId { get; set; }
+    public User User { get; set; }
     public int? JwtId { get; set; }
+    public Jwt? Jwt { get; set; }
 }

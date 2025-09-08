@@ -6,10 +6,15 @@ public class SessionHelper(IHttpContextAccessor httpContextAccessor)
 {
     public Session CreateNew(User user, Jwt newJwt)
     {
-        var userAgent = httpContextAccessor.HttpContext?.Request.Headers["User-Agent"].ToString();
-        var ipAddress = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+        var httpContext = httpContextAccessor.HttpContext;
 
-        var deviceInfo = $"{UserAgentHelper.GetOSFromUserAgent(userAgent)}, {UserAgentHelper.GetBrowserFromUserAgent(userAgent)}";
+        var userAgent = httpContext?.Request.Headers["User-Agent"].ToString()?.Trim() ?? string.Empty;
+
+        var os = UserAgentHelper.GetOSFromUserAgent(userAgent);
+        var browser = UserAgentHelper.GetBrowserFromUserAgent(userAgent);
+        var deviceInfo = $"{os}, {browser}".Trim().ToLowerInvariant();
+
+        var ipAddress = httpContext?.Connection?.RemoteIpAddress?.ToString()?.Trim() ?? "unknown";
 
         var session = new Session
         {
@@ -17,11 +22,12 @@ public class SessionHelper(IHttpContextAccessor httpContextAccessor)
             IpAddress = ipAddress,
             UserAgent = userAgent,
             DeviceInfo = deviceInfo,
-            LastActivity = DateTime.Now,
+            LastActivity = DateTime.UtcNow,
             IsActive = true,
             JwtId = newJwt.Id,
-            ExpirationDate = DateTime.Now.AddHours(1)
+            ExpirationDate = DateTime.UtcNow.AddHours(1)
         };
+
         return session;
     }
 

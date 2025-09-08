@@ -1,5 +1,6 @@
 ﻿using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
+using Microsoft.EntityFrameworkCore;
 
 namespace CmsApi.Auth.Services;
 
@@ -16,6 +17,10 @@ public class SessionService(SessionRepository sessionRepository)
     {
         return await _sessionRepository.GetByIdAsync(sessionId);
     }
+    public async Task<Session?> FindActiveSessionAsync(int userId, string deviceInfo, string ipAddress)
+    {
+        return await _sessionRepository.FindActiveSessionAsync(userId, deviceInfo, ipAddress);
+    }
     public async Task<bool> RefreshSessionAsync(int sessionId)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId);
@@ -27,6 +32,7 @@ public class SessionService(SessionRepository sessionRepository)
             return false;
 
         session.LastActivity = DateTime.Now;
+        session.LastUpdateDate = DateTime.Now;
 
         try
         {
@@ -45,6 +51,7 @@ public class SessionService(SessionRepository sessionRepository)
             return false;
 
         session.IsActive = false;
+        session.LastUpdateDate = DateTime.Now;
         await _sessionRepository.UpdateAsync(session);
         return true;
     }

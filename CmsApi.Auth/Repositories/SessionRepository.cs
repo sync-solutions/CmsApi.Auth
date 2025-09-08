@@ -10,7 +10,24 @@ public class SessionRepository(AuthDbContext dbContext)
     {
         return await dbContext.Sessions.FirstOrDefaultAsync(s => s.Id == id);
     }
+    public async Task<Session?> FindActiveSessionAsync(int userId, string deviceInfo, string ipAddress)
+    {
+        var normalizedDeviceInfo = deviceInfo.Trim().ToLowerInvariant();
+        var normalizedIpAddress = ipAddress.Trim();
 
+        return await dbContext.Sessions
+            .Include(s => s.Jwt)
+            .Where(s =>
+                s.UserId == userId &&
+                s.DeviceInfo != null &&
+                s.DeviceInfo.ToLower() == normalizedDeviceInfo &&
+                s.IpAddress == normalizedIpAddress &&
+                s.IsActive &&
+                s.Jwt.RefreshTokenExpiration > DateTime.UtcNow)
+            .OrderByDescending(s => s.LastActivity)
+            .FirstOrDefaultAsync();
+
+    }
     public async Task<Session?> GetByUserIdAsync(int userId)
     {
         return await dbContext.Sessions.FirstOrDefaultAsync(s => s.UserId == userId);
@@ -22,6 +39,8 @@ public class SessionRepository(AuthDbContext dbContext)
 
     public async Task AddAsync(Session session)
     {
+        session.CreationDate = DateTime.Now;
+        session.LastUpdateDate = DateTime.Now;
         dbContext.Sessions.Add(session);
         await dbContext.SaveChangesAsync();
     }
