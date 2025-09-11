@@ -12,11 +12,12 @@ public class JwtService : IJwtService
     private readonly string _secretKey = "iOiJIUzI1NiIsInR5cCI6IkpXVCJ9eyJpc3MiOiJPbmxpbmUgV0lUIEJ1aWxkZXIiLCJpYXQ";
     private readonly string _issuer = "CmsAuth";
     private readonly string _audience = "CmsApiClients";
-    public string GenerateToken(User user)
+    public string GenerateToken(User user, int sessionId)
     {
         var claims = new[]
         {
         new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim("SessionId", sessionId.ToString()),
         new Claim(ClaimTypes.Name, user.Username),
     };
 

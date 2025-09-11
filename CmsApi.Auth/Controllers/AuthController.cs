@@ -1,6 +1,7 @@
 ﻿using CmsApi.Auth.DTOs;
 using CmsApi.Auth.Models;
 using CmsApi.Auth.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CmsApi.Auth.Controllers;
@@ -74,6 +75,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         var success = await authService.ForgotPasswordAsync(request);
+
         return success ? Ok("Reset email sent") : NotFound("User not found");
     }
 
@@ -85,15 +87,13 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
         return success ? Ok("Password reset successful") : BadRequest("Invalid or expired token");
     }
 
+    [Authorize]
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout([FromBody] string token)
+    public async Task<IActionResult> Logout()
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var authResponse = await authService.LogoutAsync(token);
-        if (authResponse == false)
-            return Unauthorized("Can't logout");
+        var authResponse = await authService.LogoutAsync(User);
+        if (authResponse == null || authResponse.Success == false)
+            return Unauthorized(authResponse);
 
         return Ok(authResponse);
     }

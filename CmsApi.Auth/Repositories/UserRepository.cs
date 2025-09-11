@@ -12,7 +12,6 @@ public class UserRepository(AuthDbContext dbContext)
         var newUser = dbContext.Users.Add(new User
         {
             Username = request.Username,
-            Password = request.Password,
             EncPassword = hashedPassword,
             Email = request.Email,
             Name = request.Name,

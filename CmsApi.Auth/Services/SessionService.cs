@@ -8,20 +8,28 @@ public class SessionService(SessionRepository sessionRepository)
 {
     private readonly SessionRepository _sessionRepository = sessionRepository;
 
-    public async Task<Session> CreateSessionAsync(Session session)
+    public async Task<Session> CreateAsync(Session session)
     {
         await _sessionRepository.AddAsync(session);
         return session;
     }
-    public async Task<Session?> GetSessionAsync(int sessionId)
+    public async Task<Session?> GetByIdAsync(int id)
+    {
+        return await _sessionRepository.GetByIdAsync(id);
+    }
+    public async Task<Session?> GetByUserIdAsync(int userId)
+    {
+        return await _sessionRepository.GetByUserIdAsync(userId);
+    }
+    public async Task<Session?> GetAsync(int sessionId)
     {
         return await _sessionRepository.GetByIdAsync(sessionId);
     }
-    public async Task<Session?> FindActiveSessionAsync(int userId, string deviceInfo, string ipAddress)
+    public async Task<Session?> FindActiveAsync(int userId, string deviceInfo, string ipAddress)
     {
-        return await _sessionRepository.FindActiveSessionAsync(userId, deviceInfo, ipAddress);
+        return await _sessionRepository.FindActiveAsync(userId, deviceInfo, ipAddress);
     }
-    public async Task<bool> RefreshSessionAsync(int sessionId)
+    public async Task<bool> RefreshAsync(int sessionId)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId);
 
@@ -44,7 +52,7 @@ public class SessionService(SessionRepository sessionRepository)
             return false;
         }
     }
-    public async Task<bool> EndSessionAsync(int sessionId)
+    public async Task<bool> EndAsync(int sessionId)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId);
         if (session == null)
@@ -55,9 +63,20 @@ public class SessionService(SessionRepository sessionRepository)
         await _sessionRepository.UpdateAsync(session);
         return true;
     }
-    public async Task<bool> IsSessionActiveAsync(int sessionId)
+    public async Task<bool> IsActiveAsync(int sessionId)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId);
         return session != null && session.IsActive && session.LastActivity > DateTime.Now.AddMinutes(-30);
     }
+    public async Task AttachJwtAsync(int sessionId, Jwt jwt)
+    {
+        var session = await _sessionRepository.GetByIdAsync(sessionId) ??
+                      throw new InvalidOperationException($"Session {sessionId} not found.");
+
+        session.JwtId = jwt.Id;
+        session.Jwt = jwt;
+
+        await _sessionRepository.UpdateAsync(session);
+    }
+
 }
