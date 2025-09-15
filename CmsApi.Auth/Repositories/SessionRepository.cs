@@ -8,7 +8,7 @@ public class SessionRepository(AuthDbContext dbContext)
 {
     public async Task<Session?> GetByIdAsync(int id)
     {
-        return await dbContext.Sessions.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
+        return await dbContext.Sessions.Include(s => s.Jwt).FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
     }
     public async Task<Session?> FindActiveAsync(int userId, string deviceInfo, string ipAddress)
     {

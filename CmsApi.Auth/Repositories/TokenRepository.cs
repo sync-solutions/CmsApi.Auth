@@ -12,13 +12,20 @@ public class TokenRepository(AuthDbContext dbContext)
         return await dbContext.Jwts
             .FirstOrDefaultAsync(t => t.AccessToken == token && !t.IsAccessTokenRevoked);
     }
-    public async Task<Jwt> RevokeToken(Jwt jwtRecord)
+    public async Task<Jwt?> GetById(int tokenId)
     {
-        dbContext.Attach(jwtRecord);
-        jwtRecord.IsAccessTokenRevoked = true;
-        dbContext.Entry(jwtRecord).Property(j => j.IsAccessTokenRevoked).IsModified = true;
-        await dbContext.SaveChangesAsync();
-        return jwtRecord;
+        return await dbContext.Jwts.FirstOrDefaultAsync(t => t.Id == tokenId);
+    }
+    public async Task<bool> RevokeToken(int jwtId)
+    {
+        var token = await GetById(jwtId);
+
+        if (token == null) return false;
+
+        token.IsAccessTokenRevoked = true;
+        token.LastUpdateDate = DateTime.Now;
+        await Update(token);
+        return true;
     }
     public async Task<Jwt> Add(string refreshToken, User newUser, string accessToken)
     {
@@ -29,7 +36,9 @@ public class TokenRepository(AuthDbContext dbContext)
             RefreshToken = refreshToken,
             AccessTokenExpiration = DateTime.Now.AddMinutes(15),
             RefreshTokenExpiration = DateTime.Now.AddDays(7),
-            IsAccessTokenRevoked = false
+            IsAccessTokenRevoked = false,
+            CreationDate = DateTime.Now,
+            LastUpdateDate = DateTime.Now
         };
         dbContext.Jwts.Add(newJwt);
         await dbContext.SaveChangesAsync();

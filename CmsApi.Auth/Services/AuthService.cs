@@ -30,6 +30,9 @@ public class AuthService(
 
         await sessionService.EndAsync(session.Id);
 
+        if (session.JwtId != null)
+            await jwtService.RevokeToken(session.JwtId.Value);
+
         return new AuthResponse { Success = true, Message = "Logout successful." };
     }
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
@@ -64,7 +67,7 @@ public class AuthService(
         }
 
         var newSession = await sessionService.CreateAsync(
-            sessionHelper.CreateNew(user, null) // null JWT for now
+            sessionHelper.CreateNew(user)
         );
 
         var refreshToken = jwtService.GenerateRefreshToken();
@@ -141,7 +144,7 @@ public class AuthService(
         if (newUser == null)
             return new AuthResponse { Success = false, Message = "Failed to create user. Please try again later." };
 
-        var newSession = await sessionService.CreateAsync(sessionHelper.CreateNew(newUser, null));
+        var newSession = await sessionService.CreateAsync(sessionHelper.CreateNew(newUser));
 
         var accessToken = jwtService.GenerateToken(newUser, newSession.Id);
 

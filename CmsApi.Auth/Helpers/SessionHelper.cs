@@ -4,7 +4,7 @@ namespace CmsApi.Auth.Helpers;
 
 public class SessionHelper(IHttpContextAccessor httpContextAccessor)
 {
-    public Session CreateNew(User user, Jwt newJwt)
+    public Session CreateNew(User user)
     {
         var httpContext = httpContextAccessor.HttpContext;
 
@@ -22,10 +22,9 @@ public class SessionHelper(IHttpContextAccessor httpContextAccessor)
             IpAddress = ipAddress,
             UserAgent = userAgent,
             DeviceInfo = deviceInfo,
-            LastActivity = DateTime.UtcNow,
+            LastActivity = DateTime.Now,
             IsActive = true,
-            JwtId = newJwt.Id,
-            ExpirationDate = DateTime.UtcNow.AddHours(1)
+            ExpirationDate = DateTime.Now.AddHours(1)
         };
 
         return session;

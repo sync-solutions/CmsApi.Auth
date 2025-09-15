@@ -7,4 +7,5 @@ public interface IJwtService
     string GenerateToken(User user, int sessionId);
     string GenerateRefreshToken();
     ClaimsPrincipal? ValidateToken(string token);
+    Task<bool> RevokeToken(int tokenId);
 }

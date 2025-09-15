@@ -1,6 +1,7 @@
 ﻿using CmsApi.Auth.DTOs;
 using CmsApi.Auth.Models;
 using CmsApi.Auth.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,14 +15,24 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        {
+            var errors = ModelState
+                .Where(e => e.Value.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+
+            return BadRequest(new AuthResponse { Success = false, Message = "Validation failed", Errors = errors });
+        }
 
         var authResponse = await authService.LoginAsync(request);
-        if (authResponse == null || authResponse.Success == false)
-            return Unauthorized(authResponse);
+        if (authResponse == null || !authResponse.Success)
+            return StatusCode(401, authResponse);
 
-        return Ok(authResponse);
+        return StatusCode(200, authResponse);
     }
+
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -34,7 +45,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
                     kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
                 );
 
-            return BadRequest(new AuthResponse { Message = "Validation failed", Errors = errors });
+            return BadRequest(new AuthResponse { Success = false, Message = "Validation failed", Errors = errors });
         }
 
         var result = await authService.RegisterAsync(request);
@@ -43,29 +54,53 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
 
         return Ok(result);
     }
+
     [HttpPost("validate-token")]
     public async Task<IActionResult> ValidateToken([FromBody] string token)
     {
+        if (string.IsNullOrWhiteSpace(token))
+            return BadRequest(new AuthResponse
+            {
+                Success = false,
+                Message = "Token is missing",
+                StatusCode = StatusCodes.Status400BadRequest
+            });
+
         var result = await authService.ValidateTokenAsync(token);
-        return result.Success ? Ok(result) : Unauthorized(result);
+        return result.Success
+            ? Ok(result)
+            : StatusCode(StatusCodes.Status401Unauthorized, result);
     }
+
+
     [HttpPost("validate-apikey")]
     public async Task<IActionResult> ValidateApiKey([FromBody] string apiKey)
     {
         var result = await authService.ValidateApiKeyAsync(apiKey);
-        return result.Success ? Ok(result) : Unauthorized(result);
+        return result.Success ? Ok(result) : StatusCode(401, result);
     }
 
     [HttpPost("refresh-token")]
     public async Task<IActionResult> RefreshToken([FromBody] string token)
     {
         if (string.IsNullOrWhiteSpace(token))
-            return BadRequest("Refresh token is required.");
+        {
+            return BadRequest(new AuthResponse
+            {
+                Success = false,
+                Message = "Refresh token is required."
+            });
+        }
 
         var result = await authService.RefreshTokenAsync(token);
-
         if (!result.Success)
-            return Unauthorized(result.Message);
+        {
+            return StatusCode(401, new AuthResponse
+            {
+                Success = false,
+                Message = result.Message ?? "Invalid or expired refresh token."
+            });
+        }
 
         return Ok(result);
     }
@@ -73,28 +108,55 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
     {
-        if (!ModelState.IsValid) return BadRequest(ModelState);
-        var success = await authService.ForgotPasswordAsync(request);
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(e => e.Value.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
 
-        return success ? Ok("Reset email sent") : NotFound("User not found");
+            return BadRequest(new AuthResponse { Success = false, Message = "Validation failed", Errors = errors });
+        }
+
+        var success = await authService.ForgotPasswordAsync(request);
+        return success
+            ? Ok(new AuthResponse { Success = true, Message = "Reset email sent." })
+            : NotFound(new AuthResponse { Success = false, Message = "User not found." });
     }
 
     [HttpPost("reset-password")]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
     {
-        if (!ModelState.IsValid) return BadRequest(ModelState);
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState
+                .Where(e => e.Value.Errors.Count > 0)
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                );
+
+            return BadRequest(new AuthResponse { Success = false, Message = "Validation failed", Errors = errors });
+        }
+
         var success = await authService.ResetPasswordAsync(request);
-        return success ? Ok("Password reset successful") : BadRequest("Invalid or expired token");
+        return success
+            ? Ok(new AuthResponse { Success = true, Message = "Password reset successful." })
+            : BadRequest(new AuthResponse { Success = false, Message = "Invalid or expired token." });
     }
 
-    [Authorize]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {
         var authResponse = await authService.LogoutAsync(User);
-        if (authResponse == null || authResponse.Success == false)
-            return Unauthorized(authResponse);
+        if (authResponse == null || !authResponse.Success)
+            return StatusCode(401, authResponse);
 
         return Ok(authResponse);
     }
+
 }
+
