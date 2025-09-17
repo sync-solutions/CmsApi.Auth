@@ -76,6 +76,7 @@ public class AuthService(
         var newJwt = await tokenRepository.Add(refreshToken, user, accessToken);
 
         await sessionService.AttachJwtAsync(newSession.Id, newJwt);
+        await sessionService.CacheSessionAsync(newSession);
 
         await SendLoginEmail(user, newJwt);
 
@@ -199,11 +200,6 @@ public class AuthService(
         var user = await userRepository.GetByUserName(username);
         if (user == null)
             return new AuthResponse { Success = false, Message = "User not found or inactive." };
-
-        var sessionId = sessionRepository.GetByJwtIdAsync(jwt.Id).Result?.Id;
-
-        if (sessionId.HasValue)
-            await sessionService.RefreshAsync(sessionId.Value);
 
         return new AuthResponse
         {

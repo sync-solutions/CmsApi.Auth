@@ -1,6 +1,8 @@
-﻿using CmsApi.Auth.Models;
+﻿using CmsApi.Auth.DTOs;
+using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace CmsApi.Auth.Services;
 
@@ -78,5 +80,8 @@ public class SessionService(SessionRepository sessionRepository)
 
         await _sessionRepository.UpdateAsync(session);
     }
-
+    public async Task CacheSessionAsync(Session session, string? overrideKey = null)
+    {
+        await _sessionRepository.CacheSessionAsync(session, overrideKey);
+    }
 }

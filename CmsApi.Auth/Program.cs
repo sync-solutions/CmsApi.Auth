@@ -5,24 +5,42 @@ using CmsApi.Auth.Repositories;
 using CmsApi.Auth.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using StackExchange.Redis;
+using System.Net;
+using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// bind JwtSettings from configuration
+var redisConfig = builder.Configuration.GetSection("Redis");
+
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 
-// register application services & DbContext
 builder.Services.AddControllers();
 builder.Services.AddDbContext<AuthDbContext>(opt =>
     opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+{
+    var options = new ConfigurationOptions
+    {
+        EndPoints = { { "redis-13781.c326.us-east-1-3.ec2.redns.redis-cloud.com", 13781 } },
+        User = "default",
+        Password = "htptVdgvbk3MiBIBf1VrYtf0ww9sNM9v"
+    };
+    return ConnectionMultiplexer.Connect(options);
+});
+
+builder.Services.AddScoped(sp =>
+{
+    var muxer = sp.GetRequiredService<IConnectionMultiplexer>();
+    return muxer.GetDatabase();
+});
 
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
@@ -35,7 +53,6 @@ builder.Services.AddScoped<SessionRepository>();
 builder.Services.AddScoped<SessionHelper>();
 builder.Services.AddHttpContextAccessor();
 
-// configure JWT Bearer authentication
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var keyBytes = Encoding.UTF8.GetBytes(jwtSection["Key"]!);
 
@@ -74,7 +91,6 @@ builder.Services
             },
             OnChallenge = async ctx =>
             {
-                // suppress default empty 401 response
                 ctx.HandleResponse();
 
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -99,7 +115,6 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// configure Swagger/OpenAPI with JWT support
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "Auth API", Version = "v1" });
@@ -129,8 +144,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
-
-// global JSON exception handler (for 500 errors)
+var mux = app.Services.GetRequiredService<IConnectionMultiplexer>();
+Console.WriteLine($"Redis connected at startup: {mux.IsConnected}");
 app.UseExceptionHandler(errApp =>
 {
     errApp.Run(async context =>
