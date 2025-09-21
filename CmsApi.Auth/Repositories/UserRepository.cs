@@ -17,15 +17,21 @@ public class UserRepository(AuthDbContext dbContext)
             Name = request.Name,
             MobileNumber = request.MobileNumber,
             IsActive = true,
-            CreationDate = DateTime.UtcNow,
+            CreationDate = DateTime.Now,
             RoleId = request.RoleId,
             ResetPassToken = refreshToken,
-            ResetPassTokenExpiry = DateTime.Now.AddDays(7)
+            ResetPassTokenExpiry = DateTime.Now.AddDays(7),
+            Provider = "Local"
         });
         await dbContext.SaveChangesAsync();
         return newUser.Entity;
     }
-
+    public async Task<User> Add(User user)
+    {
+        var newUser = dbContext.Users.Add(user);
+        await dbContext.SaveChangesAsync();
+        return newUser.Entity;
+    }
     public async Task<User?> GetById(int UserId)
     {
         return await dbContext.Users.FirstOrDefaultAsync(u => u.Id == UserId);
@@ -45,6 +51,12 @@ public class UserRepository(AuthDbContext dbContext)
         return dbContext.Users
                     .AsNoTracking()
                     .FirstOrDefaultAsync(u => u.Username == username);
+    }
+    public Task<User?> GetByEmail(string email)
+    {
+        return dbContext.Users
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.Email == email);
     }
     public async Task<string> GenerateResetPassToken(User user)
     {

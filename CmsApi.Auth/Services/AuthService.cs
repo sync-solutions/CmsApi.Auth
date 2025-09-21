@@ -1,4 +1,5 @@
-﻿using CmsApi.Auth.DTOs;
+﻿using Azure.Core;
+using CmsApi.Auth.DTOs;
 using CmsApi.Auth.Helpers;
 using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
@@ -45,6 +46,23 @@ public class AuthService(
         if (!PasswordHasher.VerifyPassword(request.Password, user.EncPassword))
             return new AuthResponse { Success = false, Message = "Invalid credentials." };
 
+        return await AuthenticateUserAsync(user, "Local");
+    }
+    public async Task<AuthResponse> GoogleLoginAsync(User user)
+    {
+        var existingUser = await userRepository.GetByEmail(user.Email);
+        if (existingUser == null)
+        {
+            await userRepository.Add(user);
+        }
+
+        return await AuthenticateUserAsync(user, "Google");
+    }
+    public async Task<AuthResponse> AuthenticateUserAsync(User user, string source)
+    {
+        if (user == null || !user.IsActive)
+            return new AuthResponse { Success = false, Message = "Invalid credentials or user inactive." };
+
         Session? existingSession = await FindSession(user);
 
         if (existingSession != null)
@@ -66,9 +84,7 @@ public class AuthService(
             };
         }
 
-        var newSession = await sessionService.CreateAsync(
-            sessionHelper.CreateNew(user)
-        );
+        var newSession = await sessionService.CreateAsync(sessionHelper.CreateNew(user));
 
         var refreshToken = jwtService.GenerateRefreshToken();
         var accessToken = jwtService.GenerateToken(user, newSession.Id);
@@ -78,12 +94,12 @@ public class AuthService(
         await sessionService.AttachJwtAsync(newSession.Id, newJwt);
         await sessionService.CacheSessionAsync(newSession);
 
-        await SendLoginEmail(user, newJwt);
+        await SendLoginEmail(user, newJwt, source);
 
         return new AuthResponse
         {
             Success = true,
-            Message = "Login successful.",
+            Message = $"{source} login successful.",
             AccessToken = newJwt.AccessToken,
             AccessTokenExpiration = newJwt.AccessTokenExpiration,
             RefreshToken = newJwt.RefreshToken,
@@ -94,7 +110,8 @@ public class AuthService(
             SessionId = newSession.Id
         };
     }
-    private async Task SendLoginEmail(User user, Jwt newJwt)
+
+    private async Task SendLoginEmail(User user, Jwt newJwt, string source)
     {
         var htmlBody = $@"
         <h3>Hello {user.Name},</h3>
