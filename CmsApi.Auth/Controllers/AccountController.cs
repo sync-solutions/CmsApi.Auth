@@ -15,7 +15,7 @@ namespace CmsApi.Auth.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AccountController(IAuthService authService, IJwtService tokenService, UserRepository userRepository,
+public class AccountController(IAuthService authService, ITokenService tokenService, UserRepository userRepository,
                                SessionService sessionService, SessionHelper sessionHelper) : ControllerBase
 {
     [HttpPost("login")]
@@ -54,20 +54,19 @@ public class AccountController(IAuthService authService, IJwtService tokenServic
     {
         var email = User.FindFirst("email")?.Value;
         var name = User.FindFirst("name")?.Value;
-        var phoneNumber = User.FindFirst("phonenumber")?.Value;
 
-        if (string.IsNullOrEmpty(email))
-            return Unauthorized(new AuthResponse { Success = false, Message = "Email claim missing from Google response." });
+        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(name))
+            return Unauthorized(new AuthResponse { Success = false, Message = "some claims are missing from Google response." });
 
         var authResponse = await authService.GoogleLoginAsync(new User
         {
             Email = email,
             Username = email.Split('@')[0],
             Name = name,
-            MobileNumber = phoneNumber,
             Provider = "Google",
             IsActive = true,
-            CreationDate = DateTime.Now
+            CreationDate = DateTime.Now,
+            RoleId = 6 // Default role ID for Google users
         });
 
         if (authResponse == null || !authResponse.Success)

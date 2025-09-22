@@ -1,8 +1,5 @@
-﻿using CmsApi.Auth.DTOs;
-using CmsApi.Auth.Models;
+﻿using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
-using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace CmsApi.Auth.Services;
 
@@ -31,6 +28,7 @@ public class SessionService(SessionRepository sessionRepository)
     {
         return await _sessionRepository.FindActiveAsync(userId, deviceInfo, ipAddress);
     }
+
     public async Task<bool> RefreshAsync(int sessionId)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId);

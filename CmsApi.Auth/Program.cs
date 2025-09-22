@@ -43,8 +43,9 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 
 builder.Services.AddScoped(sp => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<PasswordService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<TokenRepository>();
@@ -77,10 +78,8 @@ builder.Services.AddAuthentication(options =>
     options.Scope.Add("openid");
     options.Scope.Add("email");
     options.Scope.Add("profile");
-    options.Scope.Add("https://www.googleapis.com/auth/user.phonenumbers.read");
     options.ClaimActions.MapJsonKey("email", "email");
     options.ClaimActions.MapJsonKey("name", "name");
-    options.ClaimActions.MapJsonKey("phonenumber", "phoneNumber");
     options.Events.OnCreatingTicket = async ctx =>
     {
         var identity = (ClaimsIdentity)ctx.Principal.Identity!;

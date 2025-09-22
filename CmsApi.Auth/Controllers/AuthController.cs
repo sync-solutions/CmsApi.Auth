@@ -8,7 +8,7 @@ namespace CmsApi.Auth.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(IAuthService authService, IJwtService tokenService) : ControllerBase
+public class AuthController(IAuthService authService, ITokenService tokenService, PasswordService passwordService) : ControllerBase
 {
     [HttpPost("validate-token")]
     public async Task<IActionResult> ValidateToken([FromBody] string token)
@@ -21,7 +21,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
                 StatusCode = StatusCodes.Status400BadRequest
             });
 
-        var result = await authService.ValidateTokenAsync(token);
+        var result = await tokenService.GetTokenValidationResponse(token);
         return result.Success
             ? Ok(result)
             : StatusCode(StatusCodes.Status401Unauthorized, result);
@@ -47,7 +47,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
             });
         }
 
-        var result = await authService.RefreshTokenAsync(token);
+        var result = await tokenService.RefreshTokenAsync(token);
         if (!result.Success)
         {
             return StatusCode(401, new AuthResponse
@@ -75,7 +75,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
             return BadRequest(new AuthResponse { Success = false, Message = "Validation failed", Errors = errors });
         }
 
-        var success = await authService.ForgotPasswordAsync(request);
+        var success = await passwordService.ForgotPasswordAsync(request);
         return success
             ? Ok(new AuthResponse { Success = true, Message = "Reset email sent." })
             : NotFound(new AuthResponse { Success = false, Message = "User not found." });
@@ -96,7 +96,7 @@ public class AuthController(IAuthService authService, IJwtService tokenService) 
             return BadRequest(new AuthResponse { Success = false, Message = "Validation failed", Errors = errors });
         }
 
-        var success = await authService.ResetPasswordAsync(request);
+        var success = await passwordService.ResetPasswordAsync(request);
         return success
             ? Ok(new AuthResponse { Success = true, Message = "Password reset successful." })
             : BadRequest(new AuthResponse { Success = false, Message = "Invalid or expired token." });

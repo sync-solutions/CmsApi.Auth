@@ -7,26 +7,7 @@ namespace CmsApi.Auth.Repositories;
 
 public class UserRepository(AuthDbContext dbContext)
 {
-    public async Task<User> Add(RegisterRequest request, string hashedPassword, string refreshToken)
-    {
-        var newUser = dbContext.Users.Add(new User
-        {
-            Username = request.Username,
-            EncPassword = hashedPassword,
-            Email = request.Email,
-            Name = request.Name,
-            MobileNumber = request.MobileNumber,
-            IsActive = true,
-            CreationDate = DateTime.Now,
-            RoleId = request.RoleId,
-            ResetPassToken = refreshToken,
-            ResetPassTokenExpiry = DateTime.Now.AddDays(7),
-            Provider = "Local"
-        });
-        await dbContext.SaveChangesAsync();
-        return newUser.Entity;
-    }
-    public async Task<User> Add(User user)
+    public async Task<User> Add(User user, string? hashedPassword, string provider)
     {
         var newUser = dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync();
@@ -58,7 +39,7 @@ public class UserRepository(AuthDbContext dbContext)
                     .AsNoTracking()
                     .FirstOrDefaultAsync(u => u.Email == email);
     }
-    public async Task<string> GenerateResetPassToken(User user)
+    public async Task<string> UpdateResetPassToken(User user)
     {
         dbContext.Attach(user);
         user.ResetPassToken = Guid.NewGuid().ToString();
