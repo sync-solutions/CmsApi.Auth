@@ -104,19 +104,21 @@ builder.Services.AddAuthentication(options =>
 {
     opts.RequireHttpsMetadata = true;
     opts.SaveToken = true;
-
     opts.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = true,
-        ValidIssuer = jwtSection["Issuer"],
-        ValidateAudience = true,
-        ValidAudience = jwtSection["Audience"],
+        ValidateIssuer = false,
+        //ValidIssuer = jwtSection["Issuer"],
+        ValidateAudience = false,
+        //ValidAudiences = new[]
+        //{
+        //    jwtSection["Audience"],  // e.g. https://localhost:44323
+        //    jwtSection["Issuer"]     // e.g. https://localhost:5195
+        //},
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
         ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(2),
-        NameClaimType = ClaimTypes.NameIdentifier,
-        RoleClaimType = ClaimTypes.Role
+        NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+        RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
     };
 
     opts.Events = new JwtBearerEvents
