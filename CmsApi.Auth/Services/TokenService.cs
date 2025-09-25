@@ -50,7 +50,7 @@ public class TokenService(IOptions<JwtSettings> opts, TokenRepository tokenRepos
     public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
     {
         var jwt = await tokenRepository.GetByRefreshToken(refreshToken);
-        if (jwt == null || jwt.RefreshTokenExpiration < DateTime.UtcNow)
+        if (jwt == null || jwt.RefreshTokenExpiration < DateTime.Now)
             return new AuthResponse { Success = false, Message = "Invalid or expired refresh token." };
 
         var user = await userRepository.GetById(jwt.UserId);
@@ -68,8 +68,8 @@ public class TokenService(IOptions<JwtSettings> opts, TokenRepository tokenRepos
 
             jwt.AccessToken = newAccessToken;
             jwt.RefreshToken = newRefreshToken;
-            jwt.AccessTokenExpiration = DateTime.UtcNow.AddMinutes(15);
-            jwt.RefreshTokenExpiration = DateTime.UtcNow.AddDays(7);
+            jwt.AccessTokenExpiration = DateTime.Now.AddMinutes(15);
+            jwt.RefreshTokenExpiration = DateTime.Now.AddDays(7);
 
             await tokenRepository.Update(jwt);
 
@@ -102,7 +102,7 @@ public class TokenService(IOptions<JwtSettings> opts, TokenRepository tokenRepos
     public async Task<bool> IsRefreshTokenValidAsync(string refreshToken)
     {
         var jwt = await tokenRepository.GetByRefreshToken(refreshToken);
-        return jwt != null && jwt.RefreshTokenExpiration > DateTime.UtcNow;
+        return jwt != null && jwt.RefreshTokenExpiration > DateTime.Now;
     }
     public ClaimsPrincipal? ValidateToken(string token)
     {
@@ -133,7 +133,7 @@ public class TokenService(IOptions<JwtSettings> opts, TokenRepository tokenRepos
             return new AuthResponse { Success = false, Message = "Token is missing." };
 
         var jwt = await tokenRepository.Get(token);
-        if (jwt == null || jwt.RefreshTokenExpiration < DateTime.UtcNow)
+        if (jwt == null || jwt.RefreshTokenExpiration < DateTime.Now)
             return new AuthResponse { Success = false, Message = "Invalid or expired token." };
 
         var principal = ValidateToken(token);
