@@ -64,19 +64,29 @@ public class AuthService(
             return new AuthResponse { Success = false, Message = "Invalid credentials or user inactive." };
 
         Session? existingSession = await FindSession(user);
-
         if (existingSession != null)
         {
+            var jwt = existingSession.Jwt;
+
+            if (jwt?.AccessTokenExpiration <= DateTime.Now)
+            {
+                await tokenRepository.RevokeToken(jwt.Id);
+                var newAccessToken = jwtService.GenerateToken(user, existingSession.Id);
+                var newRefreshToken = jwtService.GenerateRefreshToken();
+                jwt = await tokenRepository.Add(newRefreshToken, user, newAccessToken);
+                await sessionService.AttachJwtAsync(existingSession.Id, jwt);
+            }
+
             await sessionService.RefreshAsync(existingSession.Id);
 
             return new AuthResponse
             {
                 Success = true,
                 Message = "Session reused.",
-                AccessToken = existingSession.Jwt.AccessToken,
-                AccessTokenExpiration = existingSession.Jwt.AccessTokenExpiration,
-                RefreshToken = existingSession.Jwt.RefreshToken,
-                RefreshTokenExpiration = existingSession.Jwt.RefreshTokenExpiration,
+                AccessToken = jwt.AccessToken,
+                AccessTokenExpiration = jwt.AccessTokenExpiration,
+                RefreshToken = jwt.RefreshToken,
+                RefreshTokenExpiration = jwt.RefreshTokenExpiration,
                 UserId = user.Id,
                 Username = user.Username,
                 Email = user.Email,
