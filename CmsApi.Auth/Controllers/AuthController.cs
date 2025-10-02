@@ -1,4 +1,7 @@
-﻿using CmsApi.Auth.Models;
+﻿using CmsApi.Auth.DTOs;
+using CmsApi.Auth.Helpers;
+using CmsApi.Auth.Models;
+using CmsApi.Auth.Repositories;
 using CmsApi.Auth.Services;
 using Microsoft.AspNetCore.Mvc;
 using ForgotPasswordRequest = CmsApi.Auth.DTOs.ForgotPasswordRequest;
@@ -8,7 +11,8 @@ namespace CmsApi.Auth.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(IAuthService authService, ITokenService tokenService, PasswordService passwordService) : ControllerBase
+public class AuthController(IAuthService authService, ITokenService tokenService,
+                            UserRepository userRepository, PasswordService passwordService) : ControllerBase
 {
     [HttpPost("validate-token")]
     public async Task<IActionResult> ValidateToken([FromBody] string token)
@@ -101,21 +105,20 @@ public class AuthController(IAuthService authService, ITokenService tokenService
             ? Ok(new AuthResponse { Success = true, Message = "Password reset successful." })
             : BadRequest(new AuthResponse { Success = false, Message = "Invalid or expired token." });
     }
-    //[HttpPost("set-password")]
-    //public async Task<IActionResult> SetPassword([FromBody] SetPasswordRequest request)
-    //{
-    //    var user = await userRepository.GetByEmail(request.Email);
+    [HttpPost("set-password")]
+    public async Task<IActionResult> SetPassword([FromBody] SetPasswordRequest request)
+    {
+        var user = await userRepository.GetByEmail(request.Email);
 
-    //    if (user == null || !user.IsActive || user.HasPassword)
-    //        return BadRequest("Invalid request or password already set.");
+        if (user == null || !user.IsActive || !string.IsNullOrEmpty(user.EncPassword))
+            return BadRequest("Invalid request or password already set.");
 
-    //    user.EncPassword = PasswordHasher.HashPassword(request.NewPassword);
-    //    user.HasPassword = true;
+        user.EncPassword = PasswordHasher.HashPassword(request.NewPassword);
 
-    //    await userRepository.UpdateAsync(user);
+        await userRepository.Update(user);
 
-    //    return Ok("Password set successfully.");
-    //}
+        return Ok("Password set successfully.");
+    }
 
 
 
