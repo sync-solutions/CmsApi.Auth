@@ -11,7 +11,7 @@ namespace CmsApi.Auth.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(IAuthService authService, ITokenService tokenService,
+public class AuthController(IAuthService authService, ITokenService tokenService, SessionService sessionService,
                             UserRepository userRepository, PasswordService passwordService) : ControllerBase
 {
     [HttpPost("validate-token")]
@@ -120,6 +120,14 @@ public class AuthController(IAuthService authService, ITokenService tokenService
         return Ok("Password set successfully.");
     }
 
+    [HttpPost("revoke-session")]
+    public async Task<IActionResult> RevokeSession([FromBody] int sessionId)
+    {
+        if (!await sessionService.EndAsync(sessionId))
+            return BadRequest("Session Doesn't Exist or Already Expired");
+
+        return Ok("Session Revoked successfully.");
+    }
 
 
 }

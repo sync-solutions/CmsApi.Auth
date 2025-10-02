@@ -60,6 +60,7 @@ public class SessionService(SessionRepository sessionRepository)
 
         session.IsActive = false;
         session.LastUpdateDate = DateTime.Now;
+        session.RevokedAt = DateTime.Now;
         await _sessionRepository.UpdateAsync(session);
         return true;
     }

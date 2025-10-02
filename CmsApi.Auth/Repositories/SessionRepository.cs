@@ -28,8 +28,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
 
         return session;
     }
-
-
     public async Task<Session?> FindActiveAsync(int userId, string deviceInfo, string ipAddress)
     {
         var cacheKey = RedisKeys.ActiveSessionKey(userId, deviceInfo, ipAddress);
@@ -60,7 +58,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
 
         return session;
     }
-
     public async Task<Session?> GetByUserIdAsync(int userId)
     {
         var cacheKey = RedisKeys.SessionByUser(userId);
@@ -78,7 +75,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
 
         return session;
     }
-
     public async Task<Session?> GetByJwtIdAsync(int jwtId)
     {
         var cacheKey = RedisKeys.SessionByJwt(jwtId);
@@ -96,7 +92,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
 
         return session;
     }
-
     public async Task AddAndCacheAsync(Session session)
     {
         session.CreationDate = DateTime.Now;
@@ -116,7 +111,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
         await _dbContext.SaveChangesAsync();
 
     }
-
     public async Task UpdateAsync(Session session)
     {
         session.LastUpdateDate = DateTime.Now;
@@ -126,7 +120,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
 
         await CacheSessionAsync(session);
     }
-
     public async Task DeleteAsync(int id)
     {
         var session = await GetByIdAsync(id);
@@ -141,7 +134,6 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
             await _redisDB.KeyDeleteAsync(RedisKeys.ActiveSessionKey(session.UserId, session.DeviceInfo, session.IpAddress));
         }
     }
-
     public async Task CacheSessionAsync(Session session, string? overrideKey = null)
     {
         var serialized = JsonSerializer.Serialize(session);
