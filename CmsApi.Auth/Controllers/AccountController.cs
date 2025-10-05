@@ -112,6 +112,8 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
     public async Task<IActionResult> Edit([FromBody] UserEditRequest userEditRequest)
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        var sessionIdClaim = User.FindFirst("SessionId");
+
         if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
         {
             return Unauthorized(new AuthResponse { Success = false, Message = "Invalid user ID in token." });
@@ -121,6 +123,10 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
         if (authResponse?.Success == false)
         {
             return NotFound(authResponse);
+        }
+        if (sessionIdClaim != null && int.TryParse(sessionIdClaim.Value, out int sessionId))
+        {
+            await sessionService.EndAsync(sessionId);
         }
 
         return Ok(authResponse);
