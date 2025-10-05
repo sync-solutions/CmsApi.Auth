@@ -60,4 +60,69 @@ public class UserRepository(AuthDbContext dbContext)
         dbContext.Users.Update(user);
         await dbContext.SaveChangesAsync();
     }
+    public async Task<bool> DeleteAsync(int id)
+    {
+        var affected = await dbContext.Users
+            .Where(u => u.Id == id)
+            .ExecuteDeleteAsync();
+
+        return affected > 0;
+    }
+    public async Task<bool> DeleteManyAsync(int[] ids)
+    {
+        var affected = await dbContext.Users
+            .Where(u => ids.Contains(u.Id))
+            .ExecuteDeleteAsync();
+
+        return affected > 0;
+    }
+    public async Task<AuthResponse?> Update(int userId, UserEditRequest request)
+    {
+        var user = await dbContext.Users.FindAsync(userId);
+        if (user == null)
+            return new AuthResponse { Success = false, Message = "User not found." };
+
+        dbContext.Users.Attach(user);
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+        {
+            user.Name = request.Name;
+            dbContext.Entry(user).Property(u => u.Name).IsModified = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.MobileNumber))
+        {
+            user.MobileNumber = request.MobileNumber;
+            dbContext.Entry(user).Property(u => u.MobileNumber).IsModified = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            user.Email = request.Email;
+            dbContext.Entry(user).Property(u => u.Email).IsModified = true;
+        }
+
+        if (request.RoleId.HasValue)
+        {
+            user.RoleId = request.RoleId.Value;
+            dbContext.Entry(user).Property(u => u.RoleId).IsModified = true;
+        }
+
+        if (request.IsActive.HasValue)
+        {
+            user.IsActive = request.IsActive.Value;
+            dbContext.Entry(user).Property(u => u.IsActive).IsModified = true;
+        }
+
+        await dbContext.SaveChangesAsync();
+        return new AuthResponse
+        {
+            UserId = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            MobileNumber = user.MobileNumber,
+            RoleId = user.RoleId,
+            Success = true
+        };
+    }
 }

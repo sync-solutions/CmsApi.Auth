@@ -1,15 +1,14 @@
-﻿using CmsApi.Auth.Models;
+﻿using CmsApi.Auth.DTOs;
+using CmsApi.Auth.Helpers;
+using CmsApi.Auth.Models;
+using CmsApi.Auth.Repositories;
 using CmsApi.Auth.Services;
-using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Mvc;
-using CmsApi.Auth.DTOs;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using CmsApi.Auth.Helpers;
-using CmsApi.Auth.Repositories;
 
 namespace CmsApi.Auth.Controllers;
 
@@ -75,42 +74,6 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
         return StatusCode(200, authResponse);
     }
 
-    //[HttpGet("google-response")]
-    //public async Task<IActionResult> GoogleResponse()
-    //{
-    //    var result = await HttpContext.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    //    var claims = result.Principal?.Identities?.FirstOrDefault()?.Claims;
-    //    var email = claims?.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
-    //    var name = claims?.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
-    //    var givenName = claims?.FirstOrDefault(c => c.Type == "given_name")?.Value;
-    //    var familyName = claims?.FirstOrDefault(c => c.Type == "family_name")?.Value;
-    //    var phoneNumber = claims?.FirstOrDefault(c => c.Type == ClaimTypes.MobilePhone || c.Type == "phone_number")?.Value;
-    //    foreach (var claim in User.Claims)
-    //    {
-    //        Console.WriteLine($"{claim.Type}: {claim.Value}");
-    //    }
-
-    //    if (string.IsNullOrEmpty(email))
-    //        return Unauthorized(new AuthResponse { Success = false, Message = "Email claim missing from Google response." });
-
-    //    var authResponse = await authService.GoogleLoginAsync(new User
-    //    {
-    //        Email = email,
-    //        Username = email.Split('@')[0],
-    //        Name = name,
-    //        MobileNumber = phoneNumber,
-    //        Provider = "Google",
-    //        IsActive = true,
-    //        CreationDate = DateTime.Now
-    //    });
-
-    //    if (authResponse == null || !authResponse.Success)
-    //        return StatusCode(401, authResponse);
-
-    //    return StatusCode(200, authResponse);
-    //}
-
-
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -144,4 +107,56 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
         return Ok(authResponse);
     }
 
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [HttpPost("edit")]
+    public async Task<IActionResult> Edit([FromBody] UserEditRequest userEditRequest)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            return Unauthorized(new AuthResponse { Success = false, Message = "Invalid user ID in token." });
+        }
+
+        var authResponse = await userRepository.Update(userId, userEditRequest);
+        if (authResponse?.Success == false)
+        {
+            return NotFound(authResponse);
+        }
+
+        return Ok(authResponse);
+    }
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [HttpPost("delete")]
+    public async Task<IActionResult> Delete([FromBody] int id)
+    {
+        if (id == null)
+        {
+            return BadRequest(new AuthResponse { Success = false, Message = "User ID ain't Provided." });
+        }
+
+        var deleted = await userRepository.DeleteAsync(id);
+        if (!deleted)
+        {
+            return NotFound(new AuthResponse { Success = false, Message = "Invalid user ID." });
+        }
+
+        return Ok(new AuthResponse { Success = true, Message = "User Deleted Successfully" });
+    }
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [HttpPost("delete-many")]
+    public async Task<IActionResult> DeleteMany([FromBody] int[] ids)
+    {
+        if (ids == null || ids.Length == 0)
+        {
+            return BadRequest(new AuthResponse { Success = false, Message = "Users IDs ain't Provided." });
+        }
+
+        var deleted = await userRepository.DeleteManyAsync(ids);
+        if (!deleted)
+        {
+            return NotFound(new AuthResponse { Success = false, Message = "Invalid Users IDs." });
+        }
+
+        return Ok(new AuthResponse { Success = true, Message = "Users Deleted Successfully" });
+    }
 }
