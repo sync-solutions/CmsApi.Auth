@@ -16,7 +16,7 @@ public class PasswordService(UserRepository userRepository, SessionService sessi
         user.ResetPassToken = null;
         user.ResetPassTokenExpiry = null;
 
-        await userRepository.Update(user);
+        await userRepository.ResetPassword(user);
 
         await sessionService.EndAsync(user.Id);
 

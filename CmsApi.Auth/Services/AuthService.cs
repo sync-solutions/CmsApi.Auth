@@ -102,7 +102,7 @@ public class AuthService(
         var newJwt = await tokenRepository.Add(refreshToken, user, accessToken);
 
         await sessionService.AttachJwtAsync(newSession.Id, newJwt);
-        await sessionService.CacheSessionAsync(newSession);
+        sessionService.CacheSessionAsync(newSession);
 
         await emailService.GenerateLoginEmail(user, newJwt);
 

@@ -79,8 +79,8 @@ public class SessionService(SessionRepository sessionRepository)
 
         await _sessionRepository.UpdateAsync(session);
     }
-    public async Task CacheSessionAsync(Session session, string? overrideKey = null)
+    public void CacheSessionAsync(Session session, string? overrideKey = null)
     {
-        await _sessionRepository.CacheSessionAsync(session, overrideKey);
+        _sessionRepository.CacheSession(session, overrideKey);
     }
 }

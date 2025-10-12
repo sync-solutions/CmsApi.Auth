@@ -1,4 +1,5 @@
-﻿using CmsApi.Auth.Data;
+﻿using Azure.Core;
+using CmsApi.Auth.Data;
 using CmsApi.Auth.DTOs;
 using CmsApi.Auth.Models;
 using Microsoft.EntityFrameworkCore;
@@ -55,11 +56,64 @@ public class UserRepository(AuthDbContext dbContext)
         return await dbContext.Users
             .FirstOrDefaultAsync(u => u.ResetPassToken == request.Token && u.ResetPassTokenExpiry > DateTime.Now);
     }
-    public async Task Update(User user)
+    public async Task<AuthResponse?> Update(UserEditRequest request)
     {
-        dbContext.Users.Update(user);
+        var user = await dbContext.Users.FindAsync(request.Id);
+        if (user == null) return null;
+
+        dbContext.Users.Attach(user);
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+            dbContext.Entry(user).Property(u => u.Name).CurrentValue = request.Name;
+
+        if (!string.IsNullOrWhiteSpace(request.Email))
+            dbContext.Entry(user).Property(u => u.Email).CurrentValue = request.Email;
+
+        if (!string.IsNullOrWhiteSpace(request.MobileNumber))
+            dbContext.Entry(user).Property(u => u.MobileNumber).CurrentValue = request.MobileNumber;
+
+        if (request.RoleId.HasValue)
+            dbContext.Entry(user).Property(u => u.RoleId).CurrentValue = request.RoleId.Value;
+
+        if (request.IsActive.HasValue)
+            dbContext.Entry(user).Property(u => u.IsActive).CurrentValue = request.IsActive.Value;
+
         await dbContext.SaveChangesAsync();
+
+        return new AuthResponse
+        {
+            UserId = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            MobileNumber = user.MobileNumber,
+            RoleId = user.RoleId,
+            Success = true,
+            Message = "User Update Successfully"
+        };
     }
+    public async Task<bool> SetPassword(int userId, string hashedPassword)
+    {
+        var user = new User { Id = userId };
+        dbContext.Users.Attach(user);
+
+        user.EncPassword = hashedPassword;
+        dbContext.Entry(user).Property(u => u.EncPassword).IsModified = true;
+
+        await dbContext.SaveChangesAsync();
+        return true;
+    }
+    public async Task<bool> ResetPassword(User user)
+    {
+        dbContext.Users.Attach(user);
+
+        dbContext.Entry(user).Property(u => u.EncPassword).IsModified = true;
+        dbContext.Entry(user).Property(u => u.ResetPassToken).IsModified = true;
+        dbContext.Entry(user).Property(u => u.ResetPassTokenExpiry).IsModified = true;
+
+        await dbContext.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<bool> DeleteAsync(int id)
     {
         var affected = await dbContext.Users
@@ -75,54 +129,5 @@ public class UserRepository(AuthDbContext dbContext)
             .ExecuteDeleteAsync();
 
         return affected > 0;
-    }
-    public async Task<AuthResponse?> Update(int userId, UserEditRequest request)
-    {
-        var user = await dbContext.Users.FindAsync(userId);
-        if (user == null)
-            return new AuthResponse { Success = false, Message = "User not found." };
-
-        dbContext.Users.Attach(user);
-
-        if (!string.IsNullOrWhiteSpace(request.Name))
-        {
-            user.Name = request.Name;
-            dbContext.Entry(user).Property(u => u.Name).IsModified = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.MobileNumber))
-        {
-            user.MobileNumber = request.MobileNumber;
-            dbContext.Entry(user).Property(u => u.MobileNumber).IsModified = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.Email))
-        {
-            user.Email = request.Email;
-            dbContext.Entry(user).Property(u => u.Email).IsModified = true;
-        }
-
-        if (request.RoleId.HasValue)
-        {
-            user.RoleId = request.RoleId.Value;
-            dbContext.Entry(user).Property(u => u.RoleId).IsModified = true;
-        }
-
-        if (request.IsActive.HasValue)
-        {
-            user.IsActive = request.IsActive.Value;
-            dbContext.Entry(user).Property(u => u.IsActive).IsModified = true;
-        }
-
-        await dbContext.SaveChangesAsync();
-        return new AuthResponse
-        {
-            UserId = user.Id,
-            Username = user.Username,
-            Email = user.Email,
-            MobileNumber = user.MobileNumber,
-            RoleId = user.RoleId,
-            Success = true
-        };
     }
 }
