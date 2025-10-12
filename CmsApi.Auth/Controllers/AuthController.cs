@@ -113,9 +113,7 @@ public class AuthController(IAuthService authService, ITokenService tokenService
         if (user == null || !user.IsActive || !string.IsNullOrEmpty(user.EncPassword))
             return BadRequest("Invalid request or password already set.");
 
-        user.EncPassword = PasswordHasher.HashPassword(request.NewPassword);
-
-        await userRepository.Update(user);
+        await userRepository.SetPassword(user.Id, PasswordHasher.HashPassword(request.NewPassword));
 
         return Ok("Password set successfully.");
     }

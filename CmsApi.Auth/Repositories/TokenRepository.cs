@@ -1,46 +1,42 @@
 ﻿using CmsApi.Auth.Data;
 using CmsApi.Auth.Models;
 using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
-using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using CmsApi.Auth.DTOs;
+using StackExchange.Redis;
 
 namespace CmsApi.Auth.Repositories;
 
-public class TokenRepository(AuthDbContext dbContext, IDatabase redisDB)
+public class TokenRepository(AuthDbContext dbContext, IMemoryCache memoryCache)
 {
     private readonly AuthDbContext _dbContext = dbContext;
-    private readonly IDatabase _redisDB = redisDB;
+    private readonly IMemoryCache _memoryCache = memoryCache;
 
     public async Task<Jwt?> Get(string token)
     {
-        var cacheKey = RedisKeys.AccessToken(token);
-        var cached = await _redisDB.StringGetAsync(cacheKey);
-
-        if (cached.HasValue)
-            return JsonSerializer.Deserialize<Jwt>(cached);
+        var cacheKey = CacheKeys.AccessToken(token);
+        if (_memoryCache.TryGetValue(cacheKey, out Jwt cached))
+            return cached;
 
         var jwt = await _dbContext.Jwts
             .FirstOrDefaultAsync(t => t.AccessToken == token && !t.IsAccessTokenRevoked);
 
         if (jwt != null)
-            await CacheJwtAsync(jwt);
+            CacheJwt(jwt);
 
         return jwt;
     }
 
     public async Task<Jwt?> GetById(int tokenId)
     {
-        var cacheKey = RedisKeys.Jwt(tokenId);
-        var cached = await _redisDB.StringGetAsync(cacheKey);
-
-        if (cached.HasValue)
-            return JsonSerializer.Deserialize<Jwt>(cached);
+        var cacheKey = CacheKeys.Jwt(tokenId);
+        if (_memoryCache.TryGetValue(cacheKey, out Jwt cached))
+            return cached;
 
         var jwt = await _dbContext.Jwts.FirstOrDefaultAsync(t => t.Id == tokenId);
 
         if (jwt != null)
-            await CacheJwtAsync(jwt);
+            CacheJwt(jwt);
 
         return jwt;
     }
@@ -54,10 +50,9 @@ public class TokenRepository(AuthDbContext dbContext, IDatabase redisDB)
         token.LastUpdateDate = DateTime.Now;
         await Update(token);
 
-        await _redisDB.SetAddAsync(RedisKeys.RevokedJwt(jwtId), "1");
-
-        await _redisDB.KeyDeleteAsync(RedisKeys.Jwt(jwtId));
-        await _redisDB.KeyDeleteAsync(RedisKeys.AccessToken(token.AccessToken));
+        _memoryCache.Set(CacheKeys.RevokedJwt(jwtId), true, TimeSpan.FromDays(7)); // configurable TTL
+        _memoryCache.Remove(CacheKeys.Jwt(jwtId));
+        _memoryCache.Remove(CacheKeys.AccessToken(token.AccessToken));
 
         return true;
     }
@@ -79,7 +74,7 @@ public class TokenRepository(AuthDbContext dbContext, IDatabase redisDB)
         _dbContext.Jwts.Add(newJwt);
         await _dbContext.SaveChangesAsync();
 
-        await CacheJwtAsync(newJwt);
+        CacheJwt(newJwt);
         return newJwt;
     }
 
@@ -89,7 +84,7 @@ public class TokenRepository(AuthDbContext dbContext, IDatabase redisDB)
             .FirstOrDefaultAsync(j => j.RefreshToken == refreshToken && !j.IsAccessTokenRevoked);
 
         if (jwt != null)
-            await CacheJwtAsync(jwt);
+            CacheJwt(jwt);
 
         return jwt;
     }
@@ -99,20 +94,19 @@ public class TokenRepository(AuthDbContext dbContext, IDatabase redisDB)
         _dbContext.Jwts.Update(jwt);
         await _dbContext.SaveChangesAsync();
 
-        await CacheJwtAsync(jwt);
+        CacheJwt(jwt);
     }
 
-    private async Task CacheJwtAsync(Jwt jwt)
+    private void CacheJwt(Jwt jwt)
     {
-        var serialized = JsonSerializer.Serialize(jwt);
-        var expiry = TimeSpan.FromMinutes(15); // Match token lifetime
+        var expiry = TimeSpan.FromMinutes(15);
 
-        await _redisDB.StringSetAsync(RedisKeys.Jwt(jwt.Id), serialized, expiry);
-        await _redisDB.StringSetAsync(RedisKeys.AccessToken(jwt.AccessToken), serialized, expiry);
+        _memoryCache.Set(CacheKeys.Jwt(jwt.Id), jwt, expiry);
+        _memoryCache.Set(CacheKeys.AccessToken(jwt.AccessToken), jwt, expiry);
     }
 
-    public async Task<bool> IsRevoked(int jwtId)
+    public Task<bool> IsRevoked(int jwtId)
     {
-        return await _redisDB.SetContainsAsync(RedisKeys.RevokedJwt(jwtId), "1");
+        return Task.FromResult(_memoryCache.TryGetValue(CacheKeys.RevokedJwt(jwtId), out _));
     }
 }

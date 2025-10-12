@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using StackExchange.Redis;
 using System.Net;
 using System.Security.Claims;
 using System.Text;
@@ -21,7 +20,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Configuration
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var redisConfig = builder.Configuration.GetSection("Redis");
 var keyBytes = Encoding.UTF8.GetBytes(jwtSection["Key"]!);
 
 // Services
@@ -30,18 +28,6 @@ builder.Services.AddControllers();
 builder.Services.AddDbContext<AuthDbContext>(opt =>
     opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-{
-    var options = new ConfigurationOptions
-    {
-        EndPoints = { { redisConfig["Host"]!, int.Parse(redisConfig["Port"]!) } },
-        User = redisConfig["User"],
-        Password = redisConfig["Password"]
-    };
-    return ConnectionMultiplexer.Connect(options);
-});
-
-builder.Services.AddScoped(sp => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase());
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
@@ -53,8 +39,8 @@ builder.Services.AddScoped<ApikeyRepository>();
 builder.Services.AddScoped<SessionRepository>();
 builder.Services.AddScoped<SessionHelper>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
 
-// Authentication
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = "SmartScheme";
@@ -187,27 +173,6 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// Redis connectivity check
-var mux = app.Services.GetRequiredService<IConnectionMultiplexer>();
-Console.WriteLine($"Redis connected at startup: {mux.IsConnected}");
-
-// Global exception handler
-app.UseExceptionHandler(errApp =>
-{
-    errApp.Run(async context =>
-    {
-        var ex = context.Features.Get<IExceptionHandlerPathFeature>()?.Error;
-        var payload = new AuthResponse
-        {
-            Success = false,
-            Message = ex?.Message ?? "Unexpected server error"
-        };
-
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/json";
-        await JsonSerializer.SerializeAsync(context.Response.Body, payload);
-    });
-});
 
 // Middleware
 if (app.Environment.IsDevelopment())

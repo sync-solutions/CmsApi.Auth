@@ -1,6 +1,6 @@
 ﻿namespace CmsApi.Auth.DTOs;
 
-public class RedisKeys
+public class CacheKeys
 {
     public static string Session(int sessionId) => $"session:{sessionId}";
     public static string SessionByJwt(int jwtId) => $"session:jwt:{jwtId}";

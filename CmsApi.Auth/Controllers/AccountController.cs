@@ -3,6 +3,7 @@ using CmsApi.Auth.Helpers;
 using CmsApi.Auth.Models;
 using CmsApi.Auth.Repositories;
 using CmsApi.Auth.Services;
+using Mapster;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -108,18 +109,12 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
     }
 
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-    [HttpPost("edit")]
+    [HttpPut("edit")]
     public async Task<IActionResult> Edit([FromBody] UserEditRequest userEditRequest)
     {
-        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
         var sessionIdClaim = User.FindFirst("SessionId");
 
-        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
-        {
-            return Unauthorized(new AuthResponse { Success = false, Message = "Invalid user ID in token." });
-        }
-
-        var authResponse = await userRepository.Update(userId, userEditRequest);
+        var authResponse = await userRepository.Update(userEditRequest);
         if (authResponse?.Success == false)
         {
             return NotFound(authResponse);
@@ -132,14 +127,9 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
         return Ok(authResponse);
     }
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-    [HttpPost("delete")]
+    [HttpDelete("delete")]
     public async Task<IActionResult> Delete([FromBody] int id)
     {
-        if (id == null)
-        {
-            return BadRequest(new AuthResponse { Success = false, Message = "User ID ain't Provided." });
-        }
-
         var deleted = await userRepository.DeleteAsync(id);
         if (!deleted)
         {
@@ -149,7 +139,7 @@ public class AccountController(IAuthService authService, ITokenService tokenServ
         return Ok(new AuthResponse { Success = true, Message = "User Deleted Successfully" });
     }
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-    [HttpPost("delete-many")]
+    [HttpDelete("delete-many")]
     public async Task<IActionResult> DeleteMany([FromBody] int[] ids)
     {
         if (ids == null || ids.Length == 0)

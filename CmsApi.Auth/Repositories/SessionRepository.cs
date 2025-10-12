@@ -2,39 +2,36 @@
 using CmsApi.Auth.Models;
 using CmsApi.Auth.DTOs;
 using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
-using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
+using System;
 
 namespace CmsApi.Auth.Repositories;
 
-public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
+public class SessionRepository(AuthDbContext dbContext, IMemoryCache memoryCache)
 {
     private readonly AuthDbContext _dbContext = dbContext;
-    private readonly IDatabase _redisDB = redisDB;
+    private readonly IMemoryCache _memoryCache = memoryCache;
 
     public async Task<Session?> GetByIdAsync(int id)
     {
-        var cacheKey = RedisKeys.Session(id);
-        var cached = await _redisDB.StringGetAsync(cacheKey);
-
-        if (cached.HasValue)
-            return JsonSerializer.Deserialize<Session>(cached);
+        var cacheKey = CacheKeys.Session(id);
+        if (_memoryCache.TryGetValue(cacheKey, out Session cached))
+            return cached;
 
         var session = await _dbContext.Sessions.Include(s => s.Jwt)
             .FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
 
         if (session != null)
-            await CacheSessionAsync(session);
+            CacheSession(session);
 
         return session;
     }
+
     public async Task<Session?> FindActiveAsync(int userId, string deviceInfo, string ipAddress)
     {
-        var cacheKey = RedisKeys.ActiveSessionKey(userId, deviceInfo, ipAddress);
-        var cached = await _redisDB.StringGetAsync(cacheKey);
-
-        if (cached.HasValue)
-            return JsonSerializer.Deserialize<Session>(cached);
+        var cacheKey = CacheKeys.ActiveSessionKey(userId, deviceInfo, ipAddress);
+        if (_memoryCache.TryGetValue(cacheKey, out Session cached))
+            return cached;
 
         var normalizedDeviceInfo = deviceInfo.Trim().ToLowerInvariant();
         var normalizedIpAddress = ipAddress.Trim();
@@ -54,41 +51,37 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
             .FirstOrDefaultAsync();
 
         if (session != null)
-            await CacheSessionAsync(session, cacheKey);
+            CacheSession(session, cacheKey);
 
         return session;
     }
     public async Task<Session?> GetByUserIdAsync(int userId)
     {
-        var cacheKey = RedisKeys.SessionByUser(userId);
-        var cached = await _redisDB.StringGetAsync(cacheKey);
-
-        if (cached.HasValue)
-            return JsonSerializer.Deserialize<Session>(cached);
+        var cacheKey = CacheKeys.SessionByUser(userId);
+        if (_memoryCache.TryGetValue(cacheKey, out Session cached))
+            return cached;
 
         var session = await _dbContext.Sessions
             .Include(s => s.Jwt)
             .FirstOrDefaultAsync(s => s.UserId == userId && s.IsActive);
 
         if (session != null)
-            await CacheSessionAsync(session, cacheKey);
+            CacheSession(session, cacheKey);
 
         return session;
     }
     public async Task<Session?> GetByJwtIdAsync(int jwtId)
     {
-        var cacheKey = RedisKeys.SessionByJwt(jwtId);
-        var cached = await _redisDB.StringGetAsync(cacheKey);
-
-        if (cached.HasValue)
-            return JsonSerializer.Deserialize<Session>(cached);
+        var cacheKey = CacheKeys.SessionByJwt(jwtId);
+        if (_memoryCache.TryGetValue(cacheKey, out Session cached))
+            return cached;
 
         var session = await _dbContext.Sessions
             .Include(s => s.Jwt)
             .FirstOrDefaultAsync(s => s.JwtId == jwtId);
 
         if (session != null)
-            await CacheSessionAsync(session);
+            CacheSession(session);
 
         return session;
     }
@@ -100,7 +93,7 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
         _dbContext.Sessions.Add(session);
         await _dbContext.SaveChangesAsync();
 
-        await CacheSessionAsync(session);
+        CacheSession(session);
     }
     public async Task AddAsync(Session session)
     {
@@ -109,16 +102,15 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
 
         _dbContext.Sessions.Add(session);
         await _dbContext.SaveChangesAsync();
-
     }
     public async Task UpdateAsync(Session session)
     {
-        session.LastUpdateDate = DateTime.Now;
+        _dbContext.Entry(session).Property(s => s.IsActive).IsModified = true;
+        _dbContext.Entry(session).Property(s => s.RevokedAt).IsModified = true;
+        _dbContext.Entry(session).Property(s => s.LastUpdateDate).IsModified = true;
 
-        _dbContext.Update(session);
         await _dbContext.SaveChangesAsync();
-
-        await CacheSessionAsync(session);
+        CacheSession(session);
     }
     public async Task DeleteAsync(int id)
     {
@@ -128,24 +120,26 @@ public class SessionRepository(AuthDbContext dbContext, IDatabase redisDB)
             _dbContext.Sessions.Remove(session);
             await _dbContext.SaveChangesAsync();
 
-            await _redisDB.KeyDeleteAsync(RedisKeys.Session(id));
-            await _redisDB.KeyDeleteAsync(RedisKeys.SessionByJwt(session.JwtId.Value));
-            await _redisDB.KeyDeleteAsync(RedisKeys.SessionByUser(session.UserId));
-            await _redisDB.KeyDeleteAsync(RedisKeys.ActiveSessionKey(session.UserId, session.DeviceInfo, session.IpAddress));
+            _memoryCache.Remove(CacheKeys.Session(id));
+            if (session.JwtId != null)
+                _memoryCache.Remove(CacheKeys.SessionByJwt(session.JwtId.Value));
+            _memoryCache.Remove(CacheKeys.SessionByUser(session.UserId));
+            _memoryCache.Remove(CacheKeys.ActiveSessionKey(session.UserId, session.DeviceInfo, session.IpAddress));
         }
     }
-    public async Task CacheSessionAsync(Session session, string? overrideKey = null)
+    public void CacheSession(Session session, string? overrideKey = null)
     {
-        var serialized = JsonSerializer.Serialize(session);
         var expiry = TimeSpan.FromHours(1);
 
-        await _redisDB.StringSetAsync(RedisKeys.Session(session.Id), serialized, expiry);
+        _memoryCache.Set(CacheKeys.Session(session.Id), session, expiry);
+
         if (session.JwtId != null)
-            await _redisDB.StringSetAsync(RedisKeys.SessionByJwt(session.JwtId.Value), serialized, expiry);
-        await _redisDB.StringSetAsync(RedisKeys.SessionByUser(session.UserId), serialized, expiry);
-        await _redisDB.StringSetAsync(RedisKeys.ActiveSessionKey(session.UserId, session.DeviceInfo, session.IpAddress), serialized, expiry);
+            _memoryCache.Set(CacheKeys.SessionByJwt(session.JwtId.Value), session, expiry);
+
+        _memoryCache.Set(CacheKeys.SessionByUser(session.UserId), session, expiry);
+        _memoryCache.Set(CacheKeys.ActiveSessionKey(session.UserId, session.DeviceInfo, session.IpAddress), session, expiry);
 
         if (!string.IsNullOrWhiteSpace(overrideKey))
-            await _redisDB.StringSetAsync(overrideKey, serialized, expiry);
+            _memoryCache.Set(overrideKey, session, expiry);
     }
 }
