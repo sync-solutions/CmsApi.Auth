@@ -20,6 +20,7 @@ public class TokenService(IOptions<JwtSettings> opts, TokenRepository tokenRepos
         {
       new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
       new Claim("SessionId", sessionId.ToString()),
+      new Claim("RoleId", user.RoleId.ToString()),
       new Claim(ClaimTypes.Name, user.Username!)
     };
 
