@@ -140,21 +140,21 @@ public class TokenService(IOptions<JwtSettings> opts, TokenRepository tokenRepos
         if (principal == null)
             return new AuthResponse { Success = false, Message = "Invalid or expired token." };
 
-        var username = principal.Identity?.Name;
-        if (string.IsNullOrEmpty(username))
-            return new AuthResponse { Success = false, Message = "Invalid token payload." };
+        var usernameClaim = principal.Identity?.Name;
+        var UserIdClaim = int.TryParse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var uid) ? uid : 0;
+        var RoleIdClaim = int.TryParse(principal.FindFirst(ClaimTypes.Role)?.Value, out var rid) ? rid : 0;
 
-        var user = await userRepository.GetByUserName(username);
-        if (user == null)
-            return new AuthResponse { Success = false, Message = "User not found or inactive." };
+        if (string.IsNullOrEmpty(usernameClaim) || UserIdClaim == 0 || RoleIdClaim == 0)
+            return new AuthResponse { Success = false, Message = "Invalid token payload." };
 
         return new AuthResponse
         {
             Success = true,
             Message = "Token is valid.",
             AccessToken = token,
-            UserId = user.Id,
-            Username = user.Username
+            UserId = UserIdClaim,
+            Username = usernameClaim,
+            RoleId = RoleIdClaim
         };
     }
 }

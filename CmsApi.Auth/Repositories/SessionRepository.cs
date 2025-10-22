@@ -13,6 +13,7 @@ public class SessionRepository(AuthDbContext dbContext, IMemoryCache memoryCache
     private readonly IMemoryCache _memoryCache = memoryCache;
 
     public async Task<Session?> GetByIdAsync(int id)
+
     {
         var cacheKey = CacheKeys.Session(id);
         if (_memoryCache.TryGetValue(cacheKey, out Session cached))
