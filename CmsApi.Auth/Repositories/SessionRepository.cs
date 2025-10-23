@@ -31,6 +31,10 @@ public class SessionRepository(AuthDbContext dbContext, IMemoryCache memoryCache
     public async Task<Session?> FindActiveAsync(int userId, string deviceInfo, string ipAddress)
     {
         var cacheKey = CacheKeys.ActiveSessionKey(userId, deviceInfo, ipAddress);
+        if (_memoryCache is MemoryCache memCache)
+        {
+            memCache.Compact(1.0); // Removes all entries
+        }
         if (_memoryCache.TryGetValue(cacheKey, out Session cached))
             return cached;
 
